@@ -156,7 +156,7 @@ static void draw_shell(void)
 
     /* ---- Welcome banner ---- */
     tty_puts_center(4, "***  WELCOME BACK TO KSDOS  ***", ATTR_BRIGHT);
-    tty_puts_center(5, "The Knowledge System Disk Operating System", ATTR_YELLOW);
+    tty_puts_center(5, "The KernelSoft Disk Operating System", ATTR_YELLOW);
 
     /* ---- Separator ---- */
     tty_hline(7, ATTR_NORMAL);
