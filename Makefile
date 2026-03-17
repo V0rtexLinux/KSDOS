@@ -1,37 +1,45 @@
-CROSS_TOOLCHAIN ?=
+# Configurações de Ferramentas
+CROSS_TOOLCHAIN ?= 
 CC = $(CROSS_TOOLCHAIN)gcc
 LD = $(CROSS_TOOLCHAIN)ld
 OBJCOPY = $(CROSS_TOOLCHAIN)objcopy
 
-BUILD_DIR ?= build
-override BUILD_DIR := $(abspath $(BUILD_DIR))
+# Diretórios
+BUILD_DIR ?= $(abspath build)
+BOOT_DIR = bootloader/boot
+CORE_DIR = bootloader/core
 
-# Nome da imagem final
-OS_IMAGE = $(BUILD_DIR)/meu_os.img
+# Nome do arquivo final
+OS_IMAGE = $(BUILD_DIR)/ksdos.img
 
+# Exporta para os sub-makefiles
 export CROSS_TOOLCHAIN CC LD OBJCOPY BUILD_DIR
 
-.PHONY: all clean build-bootloader build-image
+.PHONY: all clean dirs build-boot build-core image
 
-# Alvo padrão: cria a imagem completa
-all: build-image
+all: image
 
-build-image: build-bootloader
-	@echo "--- Gerando Imagem do Sistema ---"
-	# Cria arquivo vazio de 1.44MB (floppy)
-	dd if=/dev/zero of=$(OS_IMAGE) bs=512 count=2880
-	# Escreve o bootloader no Setor 1 (MBR)
-	dd if=$(BUILD_DIR)/boot.bin of=$(OS_IMAGE) conv=notrunc
-	# Escreve o core a partir do Setor 2
-	dd if=$(BUILD_DIR)/core.bin of=$(OS_IMAGE) seek=1 conv=notrunc
-	@echo "Pronto: $(OS_IMAGE)"
-
-build-bootloader:
+dirs:
 	@mkdir -p $(BUILD_DIR)
-	$(MAKE) -C ./bootloader/boot
-	$(MAKE) -C ./bootloader/core
+
+build-boot: dirs
+	$(MAKE) -C $(BOOT_DIR)
+
+build-core: dirs
+	$(MAKE) -C $(CORE_DIR)
+
+image: build-boot build-core
+	@echo "--- Criando imagem KSDOS ---"
+	# Cria disco vazio de 1.44MB
+	dd if=/dev/zero of=$(OS_IMAGE) bs=512 count=2880
+	# Insere o Bootloader no setor 0 (512 bytes)
+	dd if=$(BUILD_DIR)/boot.bin of=$(OS_IMAGE) conv=notrunc
+	# Insere o Core a partir do setor 1
+	dd if=$(BUILD_DIR)/core.bin of=$(OS_IMAGE) seek=1 conv=notrunc
+	@echo "Sucesso: $(OS_IMAGE)"
 
 clean:
 	rm -rf $(BUILD_DIR)
-	$(MAKE) -C ./bootloader/boot clean
+	$(MAKE) -C $(BOOT_DIR) clean
+	$(MAKE) -C $(CORE_DIR) clean
 	$(MAKE) -C ./bootloader/core clean
