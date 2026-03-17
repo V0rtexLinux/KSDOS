@@ -1,8 +1,12 @@
     bits 16
     org 0x7E00
 _start:
-	;; STRIPPED FROM BBI86 - rok3tt
-	
+        ;; STRIPPED FROM BBI86 - rok3tt
+
+    ;; Ensure VGA text mode 80x25 (mode 03h) - classic MS-DOS look
+    mov ax, 0x0003
+    int 0x10
+
     ;; Setting up the GDT (Global Descriptor Table)
     mov eax, gdt_desc                ; Remember, we are still in 16-bit addressing so we must use
                                      ; convert the 32-bit address into a valid segmented address
@@ -25,7 +29,7 @@ _start:
     or al, 1
     mov cr0, eax
 
-	jmp dword 0x08:after
+        jmp dword 0x08:after
 .L1:
     hlt
     jmp .L1
