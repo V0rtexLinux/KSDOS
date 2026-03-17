@@ -1,0 +1,30 @@
+modules = ["dotnet-7.0"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["nasm", "gcc", "binutils"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Build Bootloader"
+
+[[workflows.workflow]]
+name = "Build Bootloader"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "make build-bootloader"
+
+[workflows.workflow.metadata]
+outputType = "console"
