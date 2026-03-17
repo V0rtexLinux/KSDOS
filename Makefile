@@ -1,45 +1,46 @@
-# Configurações de Ferramentas
-CROSS_TOOLCHAIN ?= 
-CC = $(CROSS_TOOLCHAIN)gcc
-LD = $(CROSS_TOOLCHAIN)ld
-OBJCOPY = $(CROSS_TOOLCHAIN)objcopy
+# Configurações de Compilação
+AS = nasm
+CC = gcc
+LD = ld
+OBJCOPY = objcopy
 
-# Diretórios
-BUILD_DIR ?= $(abspath build)
-BOOT_DIR = bootloader/boot
-CORE_DIR = bootloader/core
+# Diretórios de Origem
+BOOT_SRC = bootloader/boot
+CORE_SRC = bootloader/core
+BUILD_DIR = build
 
-# Nome do arquivo final
+# Arquivos de Saída
+BOOT_BIN = $(BUILD_DIR)/boot.bin
+CORE_BIN = $(BUILD_DIR)/core.bin
 OS_IMAGE = $(BUILD_DIR)/ksdos.img
 
-# Exporta para os sub-makefiles
-export CROSS_TOOLCHAIN CC LD OBJCOPY BUILD_DIR
+.PHONY: all clean image dirs
 
-.PHONY: all clean dirs build-boot build-core image
-
+# Alvo principal
 all: image
 
+# 1. Cria o diretório de build
 dirs:
 	@mkdir -p $(BUILD_DIR)
 
-build-boot: dirs
-	$(MAKE) -C $(BOOT_DIR)
+# 2. Compila o Bootloader (ajuste o nome do .asm se necessário)
+$(BOOT_BIN): dirs
+	$(AS) -f bin $(BOOT_SRC)/boot.asm -o $(BOOT_BIN)
 
-build-core: dirs
-	$(MAKE) -C $(CORE_DIR)
+# 3. Compila o Core (Kernel)
+$(CORE_BIN): dirs
+	$(AS) -f bin $(CORE_SRC)/core.asm -o $(CORE_BIN)
 
-image: build-boot build-core
-	@echo "--- Criando imagem KSDOS ---"
-	# Cria disco vazio de 1.44MB
+# 4. Gera a Imagem Final de 1.44MB
+image: $(BOOT_BIN) $(CORE_BIN)
+	@echo "--- Gerando ksdos.img ---"
+	# Cria arquivo vazio (floppy 1.44MB)
 	dd if=/dev/zero of=$(OS_IMAGE) bs=512 count=2880
-	# Insere o Bootloader no setor 0 (512 bytes)
-	dd if=$(BUILD_DIR)/boot.bin of=$(OS_IMAGE) conv=notrunc
-	# Insere o Core a partir do setor 1
-	dd if=$(BUILD_DIR)/core.bin of=$(OS_IMAGE) seek=1 conv=notrunc
-	@echo "Sucesso: $(OS_IMAGE)"
+	# Grava bootloader no setor 0
+	dd if=$(BOOT_BIN) of=$(OS_IMAGE) conv=notrunc
+	# Grava core a partir do setor 1
+	dd if=$(CORE_BIN) of=$(OS_IMAGE) seek=1 conv=notrunc
+	@echo "Build concluído: $(OS_IMAGE)"
 
 clean:
 	rm -rf $(BUILD_DIR)
-	$(MAKE) -C $(BOOT_DIR) clean
-	$(MAKE) -C $(CORE_DIR) clean
-	$(MAKE) -C ./bootloader/core clean
