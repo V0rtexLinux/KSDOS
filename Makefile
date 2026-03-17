@@ -2,8 +2,7 @@
 AS      = nasm
 CC      = gcc
 LD      = ld
-OBJCOPY = objcopy
-ASM     = as # GNU Assembler para arquivos .s
+ASM     = as
 
 # Diretórios
 BOOT_DIR  = bootloader/boot
@@ -17,6 +16,7 @@ CORE_BIN  = $(BUILD_DIR)/core.bin
 OS_IMAGE  = $(BUILD_DIR)/ksdos.img
 
 # Flags de Compilação
+# -m32 e -march=i386 para compatibilidade total x86
 CFLAGS  = -m32 -march=i386 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -nostdlib -Wall -Wextra -I$(CORE_DIR)
 ASFLAGS = --32
 LDFLAGS = -m elf_i386 -T $(CORE_DIR)/linker.ld -no-pie
@@ -32,17 +32,17 @@ CORE_C_OBJECTS   := $(patsubst $(CORE_DIR)/%.c, $(CORE_BUILD_DIR)/%.o, $(CORE_C_
 
 all: image
 
-# 1. Compila o Bootloader (MBR)
+# 1. Compila o Bootloader (Setor 0)
 $(BOOT_BIN): $(BOOT_DIR)/boot.asm
 	@mkdir -p $(BUILD_DIR)
 	$(AS) -f bin -I$(BOOT_DIR)/ $< -o $@
 
-# 2. Compila o Setup/Early (se existir setup.asm)
+# 2. Compila o Setup/Early (se o arquivo existir)
 $(CORE_BUILD_DIR)/early.bin: $(CORE_DIR)/setup.asm
 	@mkdir -p $(CORE_BUILD_DIR)
 	$(AS) -f bin $< -o $@
 
-# 3. Compilação do Core (Objetos)
+# 3. Compilação dos arquivos de código (.s e .c)
 $(CORE_BUILD_DIR)/%.o: $(CORE_DIR)/%.s
 	@mkdir -p $(CORE_BUILD_DIR)
 	$(ASM) $(ASFLAGS) $< -o $@
@@ -52,19 +52,22 @@ $(CORE_BUILD_DIR)/%.o: $(CORE_DIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # 4. Linkagem do Core
+# IMPORTANTE: Como seu linker.ld tem OUTPUT_FORMAT("binary"), 
+# o LD já gera o binário final. O objcopy não é necessário aqui.
 $(CORE_BIN): $(CORE_ASM_OBJECTS) $(CORE_C_OBJECTS)
 	@mkdir -p $(BUILD_DIR)
-	$(LD) $(LDFLAGS) $^ -o $(CORE_BUILD_DIR)/core.elf
-	$(OBJCOPY) -O binary $(CORE_BUILD_DIR)/core.elf $(CORE_BUILD_DIR)/after.bin
-	# Se houver early.bin, concatena, senão usa apenas o after.bin
+	$(LD) $(LDFLAGS) $^ -o $(CORE_BUILD_DIR)/after.bin
+	
+	# Verifica se existe early.bin para concatenar, senão usa apenas o after.bin
 	@if [ -f $(CORE_BUILD_DIR)/early.bin ]; then \
 		cat $(CORE_BUILD_DIR)/early.bin $(CORE_BUILD_DIR)/after.bin > $@; \
 	else \
 		cp $(CORE_BUILD_DIR)/after.bin $@; \
 	fi
+	# Trunca para exatos 10 setores (5120 bytes)
 	truncate -s 5120 $@
 
-# 5. Gera a Imagem Final do SO
+# 5. Gera a Imagem de Disco Final
 image: $(BOOT_BIN) $(CORE_BIN)
 	@echo "--- Criando $(OS_IMAGE) ---"
 	dd if=/dev/zero of=$(OS_IMAGE) bs=512 count=2880
