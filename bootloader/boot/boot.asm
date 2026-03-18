@@ -29,9 +29,8 @@ _start:
     mov ah, 0x02                                                ; Use the BIOS read sectors from disk function for `int 0x13`
     mov al, 48                                                  ; The amount of sectors to read. 48 sectors = 24576 bytes (enough for game dev kernel)
     mov ch, 0                                                   ; The specific cylinder to read, we shouldn't expect the core image
-                                                                ; to reach cylinder 1.. unless it's **REALLY** bloated---which is more of an issue
-                                                                ; than making this dynamic.
-    mov cl, 2                                                   ; We want to read from sector 2, as the MBR takes up the first initial sector.
+                                                                ; to reach cylinder 1.. unless it's **REALLY** bloated---which is more of an issue                                                            ; than making this dynamic.
+    mov cl, 1                                                   ; We want to read from sector 2, as the MBR takes up the first initial sector.
                                                                 ; Note: Starts from 1, not 0.
     mov bx, buffer                                              ; Set BX (Base Register) to point to the buffer
     int 0x13                                                    ; Read to buffer
