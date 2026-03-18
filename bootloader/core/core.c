@@ -3,7 +3,7 @@
    PSYq (PS1) and GOLD4 (DOOM) engine launchers              */
 
 /* ================================================================== */
-/*  VGA / Bochs VBE defines                                           */
+/* VGA / Bochs VBE defines                                           */
 /* ================================================================== */
 #define VGA_MEM   ((volatile unsigned short *)0xB8000)
 #define VGA_COLS  80
@@ -28,7 +28,7 @@
 #define RGB(r,g,b) (((unsigned int)(r)<<16)|((unsigned int)(g)<<8)|(unsigned int)(b))
 
 /* ================================================================== */
-/*  Keyboard defines                                                   */
+/* Keyboard defines                                                   */
 /* ================================================================== */
 #define KEYBOARD_DATA    0x60
 #define KEYBOARD_STATUS  0x64
@@ -71,7 +71,7 @@
 #define KEY_F10 0x44
 
 /* ================================================================== */
-/*  Function prototypes                                               */
+/* Function prototypes                                               */
 /* ================================================================== */
 static void outb(unsigned short port, unsigned char val);
 static void outw(unsigned short port, unsigned short val);
@@ -113,7 +113,7 @@ static void gl_demo_psx(void);
 static void gl_demo_doom(void);
 
 /* ================================================================== */
-/*  Keyboard state                                                     */
+/* Keyboard state                                                     */
 /* ================================================================== */
 static struct {
     unsigned int shift_pressed : 1;
@@ -149,7 +149,7 @@ static const unsigned char kbd_us_shift[128] = {
 };
 
 /* ================================================================== */
-/*  Low-level I/O                                                     */
+/* Low-level I/O                                                     */
 /* ================================================================== */
 static void outb(unsigned short port, unsigned char val) {
     __asm__ volatile ("outb %0,%1"::"a"(val),"Nd"(port));
@@ -168,7 +168,7 @@ static void delay(unsigned int count) {
 }
 
 /* ================================================================== */
-/*  Keyboard driver                                                   */
+/* Keyboard driver                                                   */
 /* ================================================================== */
 static void kbd_wait_write(void) { while (inb(KEYBOARD_STATUS) & 2); }
 static void kbd_wait_read(void)  { while (!(inb(KEYBOARD_STATUS) & 1)); }
@@ -248,7 +248,7 @@ static unsigned char kbd_getchar(void) {
 static int kbd_key_available(void) { return (inb(KEYBOARD_STATUS) & 1) ? 1 : 0; }
 
 /* ================================================================== */
-/*  VGA text-mode driver                                              */
+/* VGA text-mode driver                                              */
 /* ================================================================== */
 static void tty_clear(void) {
     unsigned int i;
@@ -276,7 +276,7 @@ static void tty_cursor_enable(void) {
 }
 
 /* ================================================================== */
-/*  String helpers                                                    */
+/* String helpers                                                    */
 /* ================================================================== */
 static int slen(const char *s) { int n=0; while(s[n]) n++; return n; }
 static int kstrcmp(const char *a, const char *b) {
@@ -288,9 +288,16 @@ static void kcopy(char *dst, const char *src, int n) {
 static int kparse(const char *buf, char *a0, char *a1) {
     int i=0,j=0; a0[0]=a1[0]='\0';
     while(buf[i]==' ') i++;
-    while(buf[i]&&buf[i]!=' ') a0[j++]=buf[i++]; a0[j]='\0';
+    while(buf[i]&&buf[i]!=' ') {
+        a0[j++]=buf[i++];
+    }
+    a0[j]='\0';
     while(buf[i]==' ') i++;
-    j=0; while(buf[i]) a1[j++]=buf[i++]; a1[j]='\0';
+    j=0;
+    while(buf[i]) {
+        a1[j++]=buf[i++];
+    }
+    a1[j]='\0';
     return (a0[0]!='\0')+(a1[0]!='\0');
 }
 static void tty_puts_center(int row, const char *s, unsigned char attr) {
@@ -301,7 +308,7 @@ static void tty_hline(int row, unsigned char attr) {
 }
 
 /* ================================================================== */
-/*  Command history + read_line                                       */
+/* Command history + read_line                                       */
 /* ================================================================== */
 #define HIST_MAX 8
 #define CMD_MAX  80
@@ -346,7 +353,7 @@ static void read_line(int row, int col, char *buf, int maxlen, int mask) {
 }
 
 /* ================================================================== */
-/*  Bochs VBE + Software OpenGL (640x480x32bpp)                      */
+/* Bochs VBE + Software OpenGL (640x480x32bpp)                      */
 /* ================================================================== */
 static void vbe_write(unsigned short idx, unsigned short val) {
     outw(VBE_INDEX,idx); outw(VBE_DATA,val);
@@ -378,6 +385,7 @@ static void gl_line(int x0,int y0,int x1,int y1,unsigned int c){
         int e2=2*e; if(e2>-dy){e-=dy;x0+=sx;} if(e2<dx){e+=dx;y0+=sy;} }
 }
 static void gl_fb(int x0,int y0,int x1,int y1,int x2,int y2,unsigned int c,int bottom){
+    (void)y1;
     int dy=bottom?(y2-y0):(y2-y0); if(!dy)return; int i,xi;
     for(i=0;i<=(y2-y0);i++){
         int xa,xb,y=y0+i;
@@ -456,9 +464,13 @@ static const fx_t SIN90[91]={
     60871,61356,61826,62279,62717,63139,63545,63935,64310,64668,65010,65326,65526,
     65536,65526,65510,65478,65430,65366,65287,65193,65083,64958,64818
 };
-static fx_t fsin(int d){ d=((d%360)+360)%360;
-    if(d<=90) return SIN90[d]; if(d<=180) return SIN90[180-d];
-    if(d<=270) return -SIN90[d-180]; return -SIN90[360-d]; }
+static fx_t fsin(int d){
+    d=((d%360)+360)%360;
+    if(d<=90) return SIN90[d];
+    if(d<=180) return SIN90[180-d];
+    if(d<=270) return -SIN90[d-180];
+    return -SIN90[360-d];
+}
 static fx_t fcos(int d){ return fsin(d+90); }
 
 static void rot_proj(const fx_t v[3],int rx,int ry,int rz,int *px,int *py){
@@ -589,7 +601,7 @@ static void gl_demo_doom(void) {
 }
 
 /* ================================================================== */
-/*  Login                                                             */
+/* Login                                                             */
 /* ================================================================== */
 #define USERNAME "ksdos"
 #define PASSWORD "ksdos"
@@ -611,7 +623,7 @@ static void do_login(void) {
 }
 
 /* ================================================================== */
-/*  Boot sequence                                                     */
+/* Boot sequence                                                     */
 /* ================================================================== */
 static void boot_sequence(void) {
     int r=0;
@@ -630,7 +642,7 @@ static void boot_sequence(void) {
 }
 
 /* ================================================================== */
-/*  Scrollable output area (rows 16-22)                              */
+/* Scrollable output area (rows 16-22)                              */
 /* ================================================================== */
 #define OUT_TOP  16
 #define OUT_BOT  22
@@ -663,7 +675,7 @@ static void out_cls(void){
 }
 
 /* ================================================================== */
-/*  PSYq engine IDE screen                                            */
+/* PSYq engine IDE screen                                            */
 /* ================================================================== */
 static void engine_psx(void){
     tty_clear();
@@ -696,7 +708,7 @@ static void engine_psx(void){
 }
 
 /* ================================================================== */
-/*  GOLD4 engine IDE screen                                           */
+/* GOLD4 engine IDE screen                                           */
 /* ================================================================== */
 static void engine_doom(void){
     tty_clear();
@@ -730,7 +742,7 @@ static void engine_doom(void){
 }
 
 /* ================================================================== */
-/*  makegame – simulated build pipeline                              */
+/* makegame – simulated build pipeline                              */
 /* ================================================================== */
 static void makegame_psx(void){
     out_cls();
@@ -759,7 +771,7 @@ static void makegame_doom(void){
 }
 
 /* ================================================================== */
-/*  Shell header                                                      */
+/* Shell header                                                      */
 /* ================================================================== */
 static void draw_header(void){
     tty_fill(0,0,VGA_COLS,' ',ATTR_BWHITE);
@@ -768,7 +780,7 @@ static void draw_header(void){
     tty_hline(2,ATTR_NORMAL);
     tty_puts(0,3,"  MEM:640KB  PSYq:mipsel-none-elf-gcc 12.3  GOLD4:djgpp+gold  GL:Bochs VBE",ATTR_NORMAL);
     tty_hline(4,ATTR_NORMAL);
-    tty_puts_center(6,"***  KSDOS GAME DEV EDITION  -  PS1 & DOOM DEVELOPMENT  ***",ATTR_BRIGHT);
+    tty_puts_center(6,"*** KSDOS GAME DEV EDITION  -  PS1 & DOOM DEVELOPMENT  ***",ATTR_BRIGHT);
     tty_hline(8,ATTR_NORMAL);
     tty_puts(0,9, "  help       - list all commands",         ATTR_CYAN);
     tty_puts(0,10,"  engine psx  - PSYq IDE      engine doom  - GOLD4 IDE",ATTR_CYAN);
@@ -781,7 +793,7 @@ static void draw_header(void){
 }
 
 /* ================================================================== */
-/*  Main shell loop                                                   */
+/* Main shell loop                                                   */
 /* ================================================================== */
 static void draw_shell(void){
     char line[CMD_MAX], arg0[CMD_MAX], arg1[CMD_MAX];
@@ -839,14 +851,17 @@ static void draw_shell(void){
             msg[i++]='\''; while(arg0[j]&&i<VGA_COLS-18) msg[i++]=arg0[j++];
             msg[i++]='\''; msg[i++]=' ';
             const char *e="is not recognized as a command.";
-            while(*e&&i<VGA_COLS-1) msg[i++]=*e++; msg[i]='\0';
+            while(*e&&i<VGA_COLS-1) {
+                msg[i++]=*e++;
+            }
+            msg[i]='\0';
             out_print(msg,ATTR_RED);
         }
     }
 }
 
 /* ================================================================== */
-/*  Kernel entry point                                                */
+/* Kernel entry point                                                */
 /* ================================================================== */
 void core_main(void){
     tty_cursor_enable(); tty_clear();
