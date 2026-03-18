@@ -1,4 +1,4 @@
-# KSDOS / Entry HUB OS - Dev Kit
+# KSDOS / Kernel HUB OS - Dev Kit
 
 Repositório de desenvolvimento de sistema operacional x86, contendo dois projetos distintos.
 
