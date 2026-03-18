@@ -68,6 +68,48 @@
 #define KEY_INS        0x52
 #define KEY_DEL        0x53
 
+/* Function prototypes */
+static void outb(unsigned short port, unsigned char val);
+static unsigned char inb(unsigned short port);
+static void delay(unsigned int count);
+static void kbd_wait_write(void);
+static void kbd_wait_read(void);
+static void kbd_send_cmd(unsigned char cmd);
+static void kbd_send_data(unsigned char data);
+static unsigned char kbd_read_data(void);
+static void kbd_set_leds(void);
+static void kbd_init(void);
+static int kbd_process_scancode(unsigned char scancode, unsigned char *ch);
+static unsigned char kbd_getchar(void);
+static int kbd_key_available(void);
+static void tty_clear(void);
+static void tty_put(int col, int row, char c, unsigned char attr);
+static void tty_puts(int col, int row, const char *s, unsigned char attr);
+static void tty_fill(int col, int row, int len, char c, unsigned char attr);
+static void tty_set_cursor(int col, int row);
+static void tty_cursor_enable(void);
+static int slen(const char *s);
+static int strcmp(const char *s1, const char *s2);
+static void tty_puts_center(int row, const char *s, unsigned char attr);
+static void tty_hline(int row, unsigned char attr);
+static void read_line(int row, int col, char *buffer, int maxlen, int mask);
+static void do_login(void);
+static void boot_sequence(void);
+static void draw_shell(void);
+
+/* ------------------------------------------------------------------ */
+/*  Keyboard state                                                     */
+/* ------------------------------------------------------------------ */
+static struct {
+    unsigned int shift_pressed : 1;
+    unsigned int ctrl_pressed : 1;
+    unsigned int alt_pressed : 1;
+    unsigned int caps_lock : 1;
+    unsigned int num_lock : 1;
+    unsigned int scroll_lock : 1;
+    unsigned int extended : 1;
+} kbd_state = {0};
+
 /* US Keyboard layout - normal (unshifted) */
 static const unsigned char kbd_us[128] = {
     0,    KEY_ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
@@ -93,17 +135,6 @@ static const unsigned char kbd_us_shift[128] = {
     KEY_KP_PLUS, KEY_END, KEY_DOWN, KEY_PGDN, KEY_INS, KEY_DEL, 0, 0, 0,
     KEY_F11, KEY_F12
 };
-
-/* Keyboard state */
-static struct {
-    unsigned int shift_pressed : 1;
-    unsigned int ctrl_pressed : 1;
-    unsigned int alt_pressed : 1;
-    unsigned int caps_lock : 1;
-    unsigned int num_lock : 1;
-    unsigned int scroll_lock : 1;
-    unsigned int extended : 1;
-} kbd_state = {0};
 
 /* ------------------------------------------------------------------ */
 /*  Low-level helpers                                                 */
@@ -167,6 +198,21 @@ static unsigned char kbd_read_data(void)
     return inb(KEYBOARD_DATA);
 }
 
+/* Set keyboard LEDs based on lock states */
+static void kbd_set_leds(void)
+{
+    unsigned char led_status = 0;
+    
+    if (kbd_state.scroll_lock) led_status |= 1;
+    if (kbd_state.num_lock) led_status |= 2;
+    if (kbd_state.caps_lock) led_status |= 4;
+    
+    kbd_send_data(KBD_CMD_LED);
+    kbd_read_data();  /* Read ACK */
+    kbd_send_data(led_status);
+    kbd_read_data();  /* Read ACK */
+}
+
 /* Initialize keyboard */
 static void kbd_init(void)
 {
@@ -207,21 +253,6 @@ static void kbd_init(void)
     
     /* Set keyboard LEDs */
     kbd_set_leds();
-}
-
-/* Set keyboard LEDs based on lock states */
-static void kbd_set_leds(void)
-{
-    unsigned char led_status = 0;
-    
-    if (kbd_state.scroll_lock) led_status |= 1;
-    if (kbd_state.num_lock) led_status |= 2;
-    if (kbd_state.caps_lock) led_status |= 4;
-    
-    kbd_send_data(KBD_CMD_LED);
-    kbd_read_data();  /* Read ACK */
-    kbd_send_data(led_status);
-    kbd_read_data();  /* Read ACK */
 }
 
 /* Process a scancode and return the corresponding character */
@@ -418,16 +449,6 @@ static int strcmp(const char *s1, const char *s2)
         s2++;
     }
     return *(unsigned char*)s1 - *(unsigned char*)s2;
-}
-
-/* ------------------------------------------------------------------ */
-/*  String copy                                                       */
-/* ------------------------------------------------------------------ */
-static void strcpy(char *dest, const char *src)
-{
-    while (*src)
-        *dest++ = *src++;
-    *dest = '\0';
 }
 
 /* ------------------------------------------------------------------ */
