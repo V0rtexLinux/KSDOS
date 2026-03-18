@@ -60,12 +60,12 @@ $(CORE_BIN): $(CORE_ASM_OBJECTS) $(CORE_C_OBJECTS)
 	
 	# Verifica se existe early.bin para concatenar, senão usa apenas o after.bin
 	@if [ -f $(CORE_BUILD_DIR)/early.bin ]; then \
-		cat $(CORE_BUILD_DIR)/early.bin $(CORE_BUILD_DIR)/after.bin > $@; \
+	        cat $(CORE_BUILD_DIR)/early.bin $(CORE_BUILD_DIR)/after.bin > $@; \
 	else \
-		cp $(CORE_BUILD_DIR)/after.bin $@; \
+	        cp $(CORE_BUILD_DIR)/after.bin $@; \
 	fi
-	# Trunca para exatos 10 setores (5120 bytes)
-	truncate -s 5120 $@
+	# Trunca para exatos 48 setores (24576 bytes) para kernel expandido
+	truncate -s 24576 $@
 
 # 5. Gera a Imagem de Disco Final
 image: $(BOOT_BIN) $(CORE_BIN)
@@ -74,6 +74,54 @@ image: $(BOOT_BIN) $(CORE_BIN)
 	dd if=$(BOOT_BIN) of=$(OS_IMAGE) conv=notrunc
 	dd if=$(CORE_BIN) of=$(OS_IMAGE) seek=1 conv=notrunc
 	@echo "Build finalizado com sucesso!"
+
+# ---------------------------------------------------------------
+# PSYq / PS1 game build (PSn00bSDK - mipsel-none-elf-gcc)
+# Install: curl -L <PSn00bSDK-Linux.zip> && unzip to sdk/psn00b/
+# ---------------------------------------------------------------
+PSYQ_DIR  = sdk/psn00b/PSn00bSDK
+MIPS_GCC  = sdk/psn00b/gcc-mipsel-none-elf/bin/mipsel-none-elf-gcc
+MIPS_LD   = sdk/psn00b/gcc-mipsel-none-elf/bin/mipsel-none-elf-ld
+ELF2X     = $(PSYQ_DIR)/bin/elf2x
+PSX_DIR   = games/psx/src
+PSX_OUT   = build/games/psx
+
+PSX_SRCS  = $(wildcard $(PSX_DIR)/*.c)
+PSX_OBJS  = $(patsubst $(PSX_DIR)/%.c, $(PSX_OUT)/%.o, $(PSX_SRCS))
+
+psx-game: $(PSX_OBJS)
+	@mkdir -p $(PSX_OUT)
+	$(MIPS_LD) -T games/psx/psx.ld $(PSX_OBJS) -o $(PSX_OUT)/MYGAME.ELF
+	$(ELF2X) -q $(PSX_OUT)/MYGAME.ELF $(PSX_OUT)/MYGAME.EXE
+	@echo "PS1 build OK -> $(PSX_OUT)/MYGAME.EXE"
+
+$(PSX_OUT)/%.o: $(PSX_DIR)/%.c
+	@mkdir -p $(PSX_OUT)
+	$(MIPS_GCC) -msoft-float -nostdlib -ffreestanding \
+	  -I$(PSYQ_DIR)/include -I sdk/psyq/include \
+	  -Ttext 0x80010000 -c $< -o $@
+
+# ---------------------------------------------------------------
+# GOLD4 / DOOM game build (GNU gold linker + host gcc as djgpp)
+# ---------------------------------------------------------------
+GOLD4_DIR = sdk/gold4/include
+DOOM_DIR  = games/doom/src
+DOOM_OUT  = build/games/doom
+
+DOOM_SRCS = $(wildcard $(DOOM_DIR)/*.c)
+DOOM_OBJS = $(patsubst $(DOOM_DIR)/%.c, $(DOOM_OUT)/%.o, $(DOOM_SRCS))
+
+doom-game: $(DOOM_OBJS)
+	@mkdir -p $(DOOM_OUT)
+	$(CC) -m32 -march=i386 -O2 -fuse-ld=gold \
+	  $(DOOM_OBJS) -o $(DOOM_OUT)/DOOM.EXE -nostdlib -lc
+	@echo "DOOM build OK -> $(DOOM_OUT)/DOOM.EXE"
+
+$(DOOM_OUT)/%.o: $(DOOM_DIR)/%.c
+	@mkdir -p $(DOOM_OUT)
+	$(CC) -m32 -march=i386 -O2 -std=gnu99 -ffreestanding \
+	  -I$(GOLD4_DIR) -I sdk/gold4/include \
+	  -c $< -o $@
 
 clean:
 	rm -rf $(BUILD_DIR)

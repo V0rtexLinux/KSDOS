@@ -1,0 +1,30 @@
+modules = ["dotnet-7.0"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["nasm", "qemu", "gcc-unwrapped", "binutils", "gnumake"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "vnc"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace && make image && mkdir -p /tmp/xdg-runtime && XDG_RUNTIME_DIR=/tmp/xdg-runtime DISPLAY=:0 qemu-system-i386 -drive format=raw,file=build/ksdos.img -vga std -display sdl"
