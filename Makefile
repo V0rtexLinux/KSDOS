@@ -72,7 +72,7 @@ image: $(BOOT_BIN) $(CORE_BIN)
 	@echo "--- Criando $(OS_IMAGE) ---"
 	dd if=/dev/zero of=$(OS_IMAGE) bs=512 count=2880
 	dd if=$(BOOT_BIN) of=$(OS_IMAGE) conv=notrunc
-	dd if=$(CORE_BIN) of=$(OS_IMAGE) seek=1 conv=notrunc
+	dd if=$(CORE_BIN) of=$(OS_IMAGE) seek=2 conv=notrunc
 	@echo "Build finalizado com sucesso!"
 
 # ---------------------------------------------------------------
