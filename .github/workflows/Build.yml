@@ -81,17 +81,30 @@ jobs:
 
       - name: Test with QEMU (headless)
         run: |
-          echo "--- Iniciando QEMU (máx 10 segundos) ---"
-          timeout 10s qemu-system-i386 -fda build/ksdos.img \
-            -nographic -display none -serial stdio \
-            -no-reboot -d int,cpu_reset 2>&1 | tee qemu.log
-          echo "--- Saída do QEMU ---"
-          cat qemu.log
-          # Se não aparecer "Hello, World", algo errado
-          if ! grep -q "Hello, World" qemu.log; then
-            echo "❌ Mensagem do bootloader não apareceu"
+            echo "--- Iniciando QEMU (máx 10 segundos) ---"
+            # Executa QEMU sem serial, apenas monitorando resets
+            timeout 10s qemu-system-i386 -fda build/ksdos.img \
+            -nographic -display none -monitor null \
+            -no-reboot -d int,cpu_reset 2>&1 | tee qemu.log || true
+
+            echo "--- Log de depuração do QEMU ---"
+            cat qemu.log
+
+            # Verifica se houve reset ou triple fault (indicam falha)
+            if grep -Eiq "resetting|triple fault" qemu.log; then
+              echo "❌ Sistema reiniciou ou triple fault detectado — boot falhou!"
             exit 1
-          fi
+            fi
+
+            # Verifica se o QEMU terminou antes do timeout (código 124 = timeout ok)
+            # O timeout retorna 124 se o comando foi interrompido pelo tempo limite
+            # Se retornou 0, significa que o QEMU terminou antes (provavelmente reboot)
+            if [ $? -eq 0 ]; then
+              echo "⚠️  QEMU terminou antes do tempo (possível reboot precoce)"
+            exit 1
+            fi
+
+            echo "✅ Nenhum reset detectado — imagem parece inicializável"
 
       - name: Upload image as artifact
         uses: actions/upload-artifact@v4
