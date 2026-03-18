@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["nasm", "qemu", "gcc-unwrapped", "binutils", "gnumake"]
+packages = ["nasm", "qemu", "gcc-unwrapped", "binutils", "gnumake", "p7zip"]
 
 [workflows]
 runButton = "Project"
