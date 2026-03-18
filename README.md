@@ -1,6 +1,6 @@
 # KSDOS / Kernel HUB OS - Dev Kit
 
-Repositório de desenvolvimento de sistema operacional x86, contendo dois projetos distintos.
+Repositório de desenvolvimento de sistema operacional x86, contendo dois projetos distintos e sistema de SDK para jogos.
 
 ## Estrutura do Projeto
 
@@ -23,6 +23,22 @@ Sistema operacional gráfico completo escrito em C# usando o framework Cosmos.
 ### 3. Exemplos (`/examples`)
 Scripts NASM educativos para aprender interrupções BIOS e VGA em 16-bit real mode.
 
+### 4. Sistema de SDK (`/sdk`)
+Sistema completo para desenvolvimento de jogos PS1 e DOOM usando SDKs locais.
+
+- **`sdk/psyq/`** — PS1 SDK (PSn00bSDK equivalent)
+- **`sdk/gold4/`** — DOOM SDK (GNU gold + djgpp)
+- **`sdk/sdk-config.bat`** — Script de configuração Windows
+- **`sdk/sdk-config.sh`** — Script de configuração Linux/Mac
+- **`sdk/detect-sdk.mk`** — Sistema de detecção automática
+
+### 5. Jogos (`/games`)
+Templates e exemplos para desenvolvimento de jogos.
+
+- **`games/psx/`** — Template para jogos PS1
+- **`games/doom/`** — Template para jogos DOOM/VGA
+- **`games/common.mk`** — Configuração compartilhada
+
 ## Interface KSDOS (core.c)
 
 A interface estilo MS-DOS exibe:
@@ -41,13 +57,59 @@ A interface estilo MS-DOS exibe:
 
 ## Build
 
+### Sistema Operacional
 ```bash
 make build-bootloader       # compila boot.bin + core.bin
 make -B build-bootloader    # força recompilação completa
 ```
 
+### Sistema de SDK
+```bash
+make configure-sdk          # configura ambiente SDKs
+make build-games           # compila todos os jogos
+```
+
+### Jogos Individuais
+```bash
+# PS1 Game
+cd games/psx
+make psx-game
+
+# DOOM Game  
+cd games/doom
+make doom-game
+```
+
 Output: `build/boot.bin` + `build/core.bin`  
 Para testar: `qemu-system-i386 -drive format=raw,file=build/boot.bin`
+
+## Sistema de SDK para Jogos
+
+O KSDOS inclui um sistema completo para desenvolvimento de jogos usando SDKs locais:
+
+### Configuração Automática
+- **Windows**: Execute `sdk\sdk-config.bat`
+- **Linux/Mac**: Execute `sdk/sdk-config.sh`
+
+### SDKs Disponíveis
+- **PS1 SDK** (`sdk/psyq/`) - Desenvolvimento PlayStation 1
+- **DOOM SDK** (`sdk/gold4/`) - Desenvolvimento DOOM/VGA
+
+### Detecção Automática
+O sistema detecta automaticamente os SDKs e configura variáveis de ambiente:
+- `PS1_SDK`, `DOOM_SDK` - Paths dos SDKs
+- `PS1_INC`, `DOOM_INC` - Diretórios de includes
+- `PS1_LIB`, `DOOM_LIB` - Diretórios de bibliotecas
+
+### Templates de Jogos
+Use os templates em `games/` para novos projetos:
+```makefile
+PROJECT_NAME = meu-jogo
+PLATFORM = PS1  # ou DOOM
+include ../common.mk
+```
+
+Para mais detalhes, veja `sdk/README.md`.
 
 ## Toolchain
 - NASM (bootloader ASM)

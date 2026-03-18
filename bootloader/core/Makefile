@@ -13,7 +13,7 @@ CORE_ASM_SOURCES := entry.s
 CORE_ASM_OBJECTS := $(patsubst %.s, $(BUILD_DIR)/core/%.o, $(CORE_ASM_SOURCES))
 CORE_ASM_FLAGS := --32
 
-CORE_C_SOURCES := core.c
+CORE_C_SOURCES := core.c ksdos-sdk.c game-loader.c opengl.c gl-hardware.c gl-context.c gl-demos.c msdos.c filesystem.c system.c
 CORE_C_OBJECTS := $(patsubst %.c, $(BUILD_DIR)/core/%.o, $(CORE_C_SOURCES))
 CORE_C_FLAGS := -Wall \
 				-Wextra \

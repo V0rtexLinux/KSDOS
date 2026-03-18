@@ -2,6 +2,8 @@
    VGA text mode 80x25  +  Bochs VBE OpenGL (640x480x32)
    PSYq (PS1) and GOLD4 (DOOM) engine launchers              */
 
+#include "ksdos-sdk.h"
+
 /* ================================================================== */
 /* VGA / Bochs VBE defines                                           */
 /* ================================================================== */
@@ -111,6 +113,18 @@ static void gl_text(int x,int y,const char *s,unsigned int fg,unsigned int bg);
 static void gl_demo_cube(void);
 static void gl_demo_psx(void);
 static void gl_demo_doom(void);
+static void sdk_init_system(void);
+static void sdk_show_projects(void);
+static void sdk_build_project_real(const char *project);
+static void sdk_run_project_real(const char *project);
+static void sdk_status_real(void);
+void ksdos_boot_menu(void);
+void ksdos_auto_run_game(const char *game_type);
+void gl_real_demo_cube(void);
+void gl_real_demo_psx(void);
+void gl_real_demo_doom(void);
+void gl_performance_benchmark(void);
+void gl_multi_context_demo(void);
 
 /* ================================================================== */
 /* Keyboard state                                                     */
@@ -623,22 +637,141 @@ static void do_login(void) {
 }
 
 /* ================================================================== */
-/* Boot sequence                                                     */
+/* Boot sequence with SDK initialization                             */
 /* ================================================================== */
 static void boot_sequence(void) {
     int r=0;
     tty_puts(0,r++,"Starting KSDOS Game Dev Edition...",      ATTR_NORMAL);  delay(12000000);
     tty_puts(0,r++,"HIMEM testing extended memory...",        ATTR_NORMAL);  delay(8000000);
     tty_puts(0,r++,"Loading KSDOS kernel drivers...",         ATTR_NORMAL);  delay(8000000);
-    tty_puts(0,r++,"Initializing PSYq v4.7 subsystem...",    ATTR_GREEN);   delay(8000000);
-    tty_puts(0,r++,"  PSn00bSDK mipsel-none-elf-gcc 12.3.0", ATTR_GREEN);   delay(6000000);
-    tty_puts(0,r++,"Initializing GOLD4 v4.0 subsystem...",   ATTR_YELLOW);  delay(8000000);
-    tty_puts(0,r++,"  GNU gold linker + djgpp gcc 12.3",     ATTR_YELLOW);  delay(6000000);
+    tty_puts(0,r++,"Initializing SDK system...",              ATTR_GREEN);   delay(8000000);
+    tty_puts(0,r++,"  Detecting PSYq v4.7 SDK...",           ATTR_GREEN);   delay(6000000);
+    tty_puts(0,r++,"  Detecting GOLD4 v4.0 SDK...",          ATTR_YELLOW);  delay(6000000);
     tty_puts(0,r++,"Initializing OpenGL SW 1.5 renderer...", ATTR_CYAN);    delay(8000000);
     tty_puts(0,r++,"  Bochs VBE 640x480x32bpp framebuffer",  ATTR_CYAN);    delay(6000000);
+    tty_puts(0,r++,"Scanning game projects...",              ATTR_NORMAL);  delay(5000000);
     tty_puts(0,r++,"Reading CONFIG.SYS...",                  ATTR_NORMAL);  delay(5000000);
     tty_puts(0,r++,"Processing AUTOEXEC.BAT...",             ATTR_NORMAL);  delay(5000000);
     tty_puts(0,r++,"System ready.",                          ATTR_GREEN);   delay(4000000);
+}
+
+/* ================================================================== */
+/* SDK System Implementation                                         */
+/* ================================================================== */
+static void sdk_init_system(void) {
+    out_cls();
+    out_print("Initializing KSDOS SDK System...", ATTR_CYAN);
+    
+    int result = ksdos_init_sdk_system();
+    if (result == KSDOS_SDK_SUCCESS) {
+        out_print("SDK system initialized successfully", ATTR_GREEN);
+        ksdos_show_sdk_status();
+    } else {
+        out_print("Failed to initialize SDK system", ATTR_RED);
+    }
+    
+    out_print("Available game projects:", ATTR_YELLOW);
+    ksdos_show_projects();
+}
+
+static void sdk_show_projects(void) {
+    ksdos_list_available_projects();
+    
+    /* Display projects from global buffer */
+    extern char build_output[];
+    extern int build_output_pos;
+    
+    char *line = build_output;
+    int line_start = 0;
+    
+    for (int i = 0; i < build_output_pos; i++) {
+        if (build_output[i] == '\r' && build_output[i + 1] == '\n') {
+            build_output[i] = '\0';
+            out_print(line, ATTR_NORMAL);
+            line_start = i + 2;
+            line = build_output + line_start;
+            i++;
+        }
+    }
+}
+
+static void sdk_build_project_real(const char *project) {
+    out_cls();
+    char msg[256];
+    int pos = 0;
+    
+    kcopy(msg, "Building project: ", sizeof(msg));
+    pos += slen("Building project: ");
+    kcopy(msg + pos, project, sizeof(msg) - pos);
+    
+    out_print(msg, ATTR_CYAN);
+    
+    int result = ksdos_build_game(project);
+    if (result == KSDOS_SDK_SUCCESS) {
+        out_print("Build completed successfully", ATTR_GREEN);
+        
+        /* Show build output */
+        extern char build_output[];
+        extern int build_output_pos;
+        
+        char *line = build_output;
+        int line_start = 0;
+        
+        for (int i = 0; i < build_output_pos; i++) {
+            if (build_output[i] == '\r' && build_output[i + 1] == '\n') {
+                build_output[i] = '\0';
+                out_print(line, ATTR_NORMAL);
+                line_start = i + 2;
+                line = build_output + line_start;
+                i++;
+            }
+        }
+    } else {
+        out_print("Build failed", ATTR_RED);
+    }
+}
+
+static void sdk_run_project_real(const char *project) {
+    out_cls();
+    char msg[256];
+    int pos = 0;
+    
+    kcopy(msg, "Running project: ", sizeof(msg));
+    pos += slen("Running project: ");
+    kcopy(msg + pos, project, sizeof(msg) - pos);
+    
+    out_print(msg, ATTR_CYAN);
+    out_print("Launching game...", ATTR_YELLOW);
+    
+    int result = ksdos_run_game(project);
+    if (result == KSDOS_SDK_SUCCESS) {
+        out_print("Game completed", ATTR_GREEN);
+    } else {
+        out_print("Failed to run game", ATTR_RED);
+    }
+}
+
+static void sdk_status_real(void) {
+    out_cls();
+    out_print("KSDOS SDK Status:", ATTR_CYAN);
+    ksdos_show_sdk_status();
+    
+    /* Show SDK status from global buffer */
+    extern char build_output[];
+    extern int build_output_pos;
+    
+    char *line = build_output;
+    int line_start = 0;
+    
+    for (int i = 0; i < build_output_pos; i++) {
+        if (build_output[i] == '\r' && build_output[i + 1] == '\n') {
+            build_output[i] = '\0';
+            out_print(line, ATTR_NORMAL);
+            line_start = i + 2;
+            line = build_output + line_start;
+            i++;
+        }
+    }
 }
 
 /* ================================================================== */
@@ -782,10 +915,10 @@ static void draw_header(void){
     tty_hline(4,ATTR_NORMAL);
     tty_puts_center(6,"*** KSDOS GAME DEV EDITION  -  PS1 & DOOM DEVELOPMENT  ***",ATTR_BRIGHT);
     tty_hline(8,ATTR_NORMAL);
-    tty_puts(0,9, "  help       - list all commands",         ATTR_CYAN);
-    tty_puts(0,10,"  engine psx  - PSYq IDE      engine doom  - GOLD4 IDE",ATTR_CYAN);
-    tty_puts(0,11,"  makegame psx/doom  - build  playgame psx/doom  - 3D demo",ATTR_CYAN);
-    tty_puts(0,12,"  gl [psx|doom|cube]  - OpenGL demo    ver  sysinfo  cls  exit",ATTR_CYAN);
+    tty_puts(0,12,"  help       - list all commands",         ATTR_CYAN);
+    tty_puts(0,13,"  engine psx  - PSYq IDE      engine doom  - GOLD4 IDE",ATTR_CYAN);
+    tty_puts(0,14,"  makegame psx/doom  - build  playgame psx/doom  - 3D demo",ATTR_CYAN);
+    tty_puts(0,15,"  gl [psx|doom|cube]  - OpenGL demo    sdk init/build/run/status",ATTR_CYAN);
     tty_hline(13,ATTR_NORMAL);
     tty_hline(15,ATTR_NORMAL);
     out_cls();
@@ -810,7 +943,8 @@ static void draw_shell(void){
         if(kstrcmp(arg0,"help")==0){
             out_print("Commands: help cls ver sysinfo exit",ATTR_CYAN);
             out_print("  makegame [psx|doom]   playgame [psx|doom]",ATTR_CYAN);
-            out_print("  engine   [psx|doom]   gl [psx|doom|cube]",ATTR_CYAN);
+            out_print("  engine   [psx|doom]   gl [psx|doom|cube|bench|multi]",ATTR_CYAN);
+            out_print("  sdk init/build/run/status  - Real SDK commands",ATTR_CYAN);
         }
         else if(kstrcmp(arg0,"cls")==0){ tty_clear(); draw_header(); }
         else if(kstrcmp(arg0,"ver")==0){
@@ -824,9 +958,12 @@ static void draw_shell(void){
             out_print("MEM: 640KB conv + 16MB extended via VBE LFB",ATTR_NORMAL);
         }
         else if(kstrcmp(arg0,"gl")==0){
-            if(kstrcmp(arg1,"psx")==0)       gl_demo_psx();
-            else if(kstrcmp(arg1,"doom")==0)  gl_demo_doom();
-            else                              gl_demo_cube();
+            if(kstrcmp(arg1,"psx")==0)       gl_real_demo_psx();
+            else if(kstrcmp(arg1,"doom")==0)  gl_real_demo_doom();
+            else if(kstrcmp(arg1,"cube")==0)  gl_real_demo_cube();
+            else if(kstrcmp(arg1,"bench")==0)  gl_performance_benchmark();
+            else if(kstrcmp(arg1,"multi")==0)  gl_multi_context_demo();
+            else                              gl_real_demo_cube();
             tty_clear(); draw_header();
         }
         else if(kstrcmp(arg0,"engine")==0){
@@ -841,9 +978,16 @@ static void draw_shell(void){
             else out_print("Usage: makegame psx | makegame doom",ATTR_RED);
         }
         else if(kstrcmp(arg0,"playgame")==0){
-            if(kstrcmp(arg1,"psx")==0){       gl_demo_psx();  tty_clear(); draw_header(); }
-            else if(kstrcmp(arg1,"doom")==0){ gl_demo_doom(); tty_clear(); draw_header(); }
+            if(kstrcmp(arg1,"psx")==0){       gl_real_demo_psx();  tty_clear(); draw_header(); }
+            else if(kstrcmp(arg1,"doom")==0){ gl_real_demo_doom(); tty_clear(); draw_header(); }
             else out_print("Usage: playgame psx | playgame doom",ATTR_RED);
+        }
+        else if(kstrcmp(arg0,"sdk")==0){
+            if(kstrcmp(arg1,"init")==0)        sdk_init_system();
+            else if(kstrcmp(arg1,"build")==0)  sdk_build_project_real("psx-demo");
+            else if(kstrcmp(arg1,"run")==0)    sdk_run_project_real("psx-demo");
+            else if(kstrcmp(arg1,"status")==0) sdk_status_real();
+            else out_print("Usage: sdk init | sdk build | sdk run | sdk status",ATTR_RED);
         }
         else if(kstrcmp(arg0,"exit")==0) running=0;
         else if(arg0[0]!='\0'){
@@ -867,6 +1011,14 @@ void core_main(void){
     tty_cursor_enable(); tty_clear();
     boot_sequence();
     do_login();
+    
+    /* Show boot menu for game selection */
+    ksdos_boot_menu();
+    
+    /* Initialize SDK system */
+    ksdos_init_sdk_system();
+    
+    /* Enter shell */
     draw_shell();
     for(;;) __asm__ volatile("cli;hlt");
 }
