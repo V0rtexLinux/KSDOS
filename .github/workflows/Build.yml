@@ -1,33 +1,100 @@
-name: KSDOS CI
+name: Build and Test OS
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Instalar NASM
-        run: sudo apt-get update && sudo apt-get install -y nasm
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            nasm gcc binutils coreutils qemu-system-x86 \
+            make
 
-      - name: Rodar Compilação
-        run: make image  
+      - name: Show directory structure
+        run: |
+          echo "Arquivos no bootloader/boot:"
+          ls -la bootloader/boot/
+          echo "Arquivos no bootloader/core:"
+          ls -la bootloader/core/
 
-      - name: Upload Artefato
+      - name: Build
+        run: make
+
+      - name: Check bootloader
+        run: |
+          echo "--- boot.bin ---"
+          wc -c build/boot.bin
+          hexdump -C build/boot.bin | tail -2
+          # Verifica assinatura 55 AA
+          if ! hexdump -C build/boot.bin | grep -q "55 aa"; then
+            echo "❌ Assinatura de boot ausente!"
+            exit 1
+          fi
+
+      - name: Check early.bin
+        run: |
+          if [ -f build/core/early.bin ]; then
+            echo "--- early.bin ---"
+            wc -c build/core/early.bin
+            # Deve ter exatamente 256 bytes
+            if [ $(wc -c < build/core/early.bin) -ne 256 ]; then
+              echo "❌ early.bin não tem 256 bytes!"
+              exit 1
+            fi
+          else
+            echo "⚠️  early.bin não encontrado (pode ser normal se não existir)"
+          fi
+
+      - name: Check after.bin size
+        run: |
+          echo "--- after.bin ---"
+          wc -c build/core/after.bin
+          SIZE=$(wc -c < build/core/after.bin)
+          MAX=$((24576 - 256))
+          if [ $SIZE -gt $MAX ]; then
+            echo "❌ after.bin é maior que $MAX bytes (limite para 48 setores)"
+            echo "Aumente o número de setores no bootloader e no Makefile"
+            exit 1
+          fi
+
+      - name: Check core.bin
+        run: |
+          echo "--- core.bin ---"
+          wc -c build/core.bin
+          if [ $(wc -c < build/core.bin) -ne 24576 ]; then
+            echo "❌ core.bin não tem 24576 bytes"
+            exit 1
+          fi
+
+      - name: Inspect final image
+        run: |
+          echo "--- ksdos.img (primeiros 512 bytes) ---"
+          hexdump -C build/ksdos.img | head -20
+          echo "--- Setor 1 da imagem (início do kernel) ---"
+          dd if=build/ksdos.img bs=512 skip=1 count=1 2>/dev/null | hexdump -C | head -10
+
+      - name: Test with QEMU (headless)
+        run: |
+          echo "--- Iniciando QEMU (máx 10 segundos) ---"
+          timeout 10s qemu-system-i386 -fda build/ksdos.img \
+            -nographic -display none -serial stdio \
+            -no-reboot -d int,cpu_reset 2>&1 | tee qemu.log
+          echo "--- Saída do QEMU ---"
+          cat qemu.log
+          # Se não aparecer "Hello, World", algo errado
+          if ! grep -q "Hello, World" qemu.log; then
+            echo "❌ Mensagem do bootloader não apareceu"
+            exit 1
+          fi
+
+      - name: Upload image as artifact
         uses: actions/upload-artifact@v4
         with:
           name: ksdos-image
           path: build/ksdos.img
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: build/ksdos.img
-          body: "Nova build do KSDOS gerada automaticamente."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
