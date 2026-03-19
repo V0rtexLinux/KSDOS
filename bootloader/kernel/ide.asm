@@ -627,15 +627,15 @@ ide_clamp_col:
 ide_ensure_visible:
     push ax
     push bx
+    push si
 
     ; 1. Se o cursor estiver ACIMA da visão (ide_cur_row < ide_top_row)
     mov ax, [ide_cur_row]
     cmp ax, [ide_top_row]
     jge .check_below
     
-    ; Move o topo para a linha do cursor (scroll up instantâneo)
     mov [ide_top_row], ax
-    jmp .done
+    jmp .get_line_info
 
 .check_below:
     ; 2. Se o cursor estiver ABAIXO da visão (ide_cur_row >= ide_top_row + IDE_VIEW_H)
@@ -643,19 +643,28 @@ ide_ensure_visible:
     add ax, IDE_VIEW_H - 1    ; AX = última linha visível
     
     mov bx, [ide_cur_row]
-    cmp bx, ax                ; Compara cursor com o limite inferior
-    jle .done                 ; Se for menor ou igual, está visível.
+    cmp bx, ax                
+    jle .get_line_info        ; Se estiver visível, pula para pegar info da linha
     
-    ; Se chegou aqui, precisamos de scroll down.
-    ; Novo top_row = ide_cur_row - (IDE_VIEW_H - 1)
+    ; Scroll down
     mov ax, [ide_cur_row]
     sub ax, IDE_VIEW_H - 1
     mov [ide_top_row], ax
 
+.get_line_info:
+    ; --- ESTA É A PARTE QUE O NASM RECLAMA (LINHA 382) ---
+    ; Precisamos pegar o comprimento da linha atual
+    mov ax, [ide_cur_row]
+    shl ax, 1               ; Multiplica por 2 (word)
+    mov si, ax              ; <--- CORREÇÃO: Move para SI (ponteiro válido)
+    mov dx, [ide_line_len + si] ; <--- CORREÇÃO: Usa SI em vez de AX
+
 .done:
+    pop si
     pop bx
     pop ax
     ret
+
 
 
 ; ============================================================
@@ -825,7 +834,7 @@ ide_redraw_cursor:
     ret
 
 ; ============================================================
-; ide_load: load file [ide_filename] into buffer
+; ide_load: carregar arquivo [ide_filename] para o buffer
 ; ============================================================
 ide_load:
     push ax
@@ -836,68 +845,75 @@ ide_load:
     push di
     push es
 
-    ; Convert filename to 8.3 DOS format
+    ; Converter nome para 8.3 DOS
     mov si, ide_filename
     mov di, _ide_dosname
     call str_to_dosname
 
-    ; Find file in root dir
+    ; Procurar no diretório raiz
     mov si, _ide_dosname
     call fat_find
     jc .load_not_found
 
-    ; Get starting cluster (offset 26 in dir entry)
+    ; Cluster inicial (offset 26 na entrada do dir)
     mov ax, [di + 26]
-    ; Get file size (offset 28)
-    mov cx, [di + 28]       ; file size (low word)
+    ; Tamanho do arquivo (offset 28)
+    mov cx, [di + 28]       
     mov [_ide_fsize], cx
 
-    ; Read file into temp buffer
+    ; Ler arquivo para o buffer temporário
     push ds
     pop es
     mov bx, FILE_BUF
     call fat_read_file
 
-    ; Parse file into lines
+    ; Parse do arquivo para linhas
     mov si, FILE_BUF
-    xor di, di              ; current line index
-    xor bx, bx              ; current col
-    xor cx, cx              ; char count
+    xor di, di              ; di = índice da linha atual
+    xor bx, bx              ; bx = coluna atual
+    xor bp, bp              ; bp = contador de bytes lidos (usando BP para liberar CX)
 
 .parse_loop:
-    cmp cx, [_ide_fsize]
+    cmp bp, [_ide_fsize]
     jge .parse_done
     cmp di, IDE_LINES
     jge .parse_done
 
     lodsb
-    inc cx
-    cmp al, 0x0D            ; CR
+    inc bp
+    cmp al, 0x0D            ; Ignorar CR
     je .parse_loop
-    cmp al, 0x0A            ; LF → new line
+    cmp al, 0x0A            ; LF -> nova linha
     je .next_line
     cmp bx, IDE_LINE_W - 1
-    jge .parse_loop         ; line too long, discard
+    jge .parse_loop         ; linha muito longa, descarta char
 
-    ; Store char
-    push ax
-    mov ax, di
+    ; --- CORREÇÃO DE ENDEREÇAMENTO 16-BIT ---
+    push ax                 ; Salva o caractere lido
+    mov ax, di              ; AX = linha atual
     mov dx, IDE_LINE_W
-    mul dx              ; AX = row * 80
-    add ax, bx          ; AX = (row * 80) + column
+    mul dx                  ; AX = linha * 80
+    add ax, bx              ; AX = (linha * 80) + coluna
+    
+    push si                 ; Salva ponteiro do FILE_BUF
     mov si, ide_buf
-    add si, ax          ; [span_10](start_span)Use SI as the final pointer[span_10](end_span)
-    pop ax
-    mov [si], al        ; [span_11](start_span)SUCCESS: SI is a valid 16-bit index[span_11](end_span)
+    add si, ax              ; SI = endereço final no buffer do editor
+    pop ax                  ; Recupera o caractere em AL (estava no stack)
+    mov [si], al            ; SUCESSO: SI é um ponteiro válido
+    pop si                  ; Restaura ponteiro do FILE_BUF
+    ; ----------------------------------------
 
-    ; Update length
+    ; --- ATUALIZAR COMPRIMENTO DA LINHA ---
     push bx
     mov ax, di
-    shl ax, 1
+    shl ax, 1               ; AX = linha * 2 (tamanho de word)
+    push si
     mov si, ide_line_len
-    add si, ax
-    inc word [si]
+    add si, ax              ; SI = endereço do contador desta linha
+    inc word [si]           ; Incrementa comprimento
+    pop si
     pop bx
+    ; --------------------------------------
 
     inc bx
     jmp .parse_loop
