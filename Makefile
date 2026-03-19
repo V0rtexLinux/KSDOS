@@ -29,17 +29,17 @@ image: $(DISK_IMG)
 
 $(BOOTSECT_BIN): $(BOOTSECT_SRC) | $(BUILD)
 	@echo "[NASM] Assembling boot sector..."
-	$(NASM) -f bin -o $@ $<
+	$(NASM) -f bin -i $(BOOT_DIR)/ -o $@ $<
 	@echo "[OK]   bootsect.bin"
 
 $(KERNEL_BIN): $(KERNEL_SRC) | $(BUILD)
 	@echo "[NASM] Assembling kernel (KSDOS.SYS)..."
-	$(NASM) -f bin -o $@ $<
+	$(NASM) -f bin -i $(KERN_DIR)/ -o $@ $<
 	@echo "[OK]   ksdos.bin"
 
 $(MBR_BIN): $(MBR_SRC) | $(BUILD)
 	@echo "[NASM] Assembling MBR..."
-	$(NASM) -f bin -o $@ $<
+	$(NASM) -f bin -i $(BOOT_DIR)/ -o $@ $<
 	@echo "[OK]   mbr.bin"
 
 $(DISK_IMG): $(BOOTSECT_BIN) $(KERNEL_BIN) | $(BUILD)
