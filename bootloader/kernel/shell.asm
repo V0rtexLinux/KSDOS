@@ -1102,7 +1102,7 @@ sh_TREE:
     ; Show subdir contents (one level deep)
     mov si, [_sh_dir_ent]
     mov ax, [si+26]             ; subdir starting cluster
-    push [cur_dir_cluster]
+    push word [cur_dir_cluster]
     mov [cur_dir_cluster], ax
     call fat_load_dir
     call fat_max_entries        ; CX = subdir entry count (outer CX is on stack)
@@ -1135,7 +1135,7 @@ sh_TREE:
     dec dx
     jmp .sub_loop
 .sub_done:
-    pop [cur_dir_cluster]
+    pop word [cur_dir_cluster]
     call fat_load_dir
     pop si
     pop cx
@@ -1401,6 +1401,20 @@ str_stub_sort:  db "SORT: not yet implemented.", 0
 str_stub_more:  db "MORE: not yet implemented.", 0
 str_stub_diskcopy: db "DISKCOPY: not yet implemented.", 0
 str_stub_sys:   db "SYS: not yet implemented.", 0
+
+; Directory operation strings
+str_dir_tag:     db "<DIR>", 0
+str_no_dir:      db "Directory not found.", 0
+str_not_dir:     db "Not a directory.", 0
+str_mkdir_ok:    db "Directory created.", 0
+str_dir_exists:  db "Directory already exists.", 0
+str_no_space:    db "Insufficient disk space.", 0
+str_dir_notempty: db "Directory not empty.", 0
+str_rd_ok:       db "Directory removed.", 0
+str_deltree_ok:  db "Directory tree deleted.", 0
+str_tree_dir:    db "+--", 0
+str_tree_sub:    db "|  +--", 0
+str_tree_file:   db "   ", 0
 
 str_b1:     db "KSDOS v1.0  16-bit Real Mode x86 Operating System", 0
 str_b2:     db "Copyright (C) KSDOS Project 2024  All rights reserved", 0
