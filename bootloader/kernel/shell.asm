@@ -59,13 +59,13 @@ shell_run:
     ; Parse argument (rest of line, trimmed)
     call str_ltrim
     mov di, sh_arg
-    xor cx, cx
+    xor bx, bx          ; [span_1](start_span)Use BX as the index instead of CX[span_1](end_span)
 .copy_arg:
     lodsb
-    mov [di + cx], al
+    mov [di + bx], al   ; [span_2](start_span)BX is a valid 16-bit pointer[span_2](end_span)
     test al, al
     jz .arg_done
-    inc cx
+    inc bx              ; [span_3](start_span)Increment our pointer index[span_3](end_span)
     jmp .copy_arg
 .arg_done:
 
