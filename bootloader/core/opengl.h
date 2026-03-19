@@ -2,6 +2,25 @@
    KSDOS OpenGL 1.5 Real Implementation
    Hardware-accelerated graphics for PS1 and DOOM development
    ================================================================ */
+#ifndef OPENGL_H_TYPES
+#define OPENGL_H_TYPES
+
+#include <stddef.h>  // O GCC fornece este header mesmo em modo freestanding
+#include <stdint.h>  // Para garantir tipos como int32_t se precisar
+
+typedef int GLboolean; // Defina GLboolean já que o erro apontou que ele é desconhecido
+#define GL_TRUE  1
+#define GL_FALSE 0
+
+// Se o erro de GLvec2 persistir, você precisa definir a struct/typedef dele:
+typedef struct { float x, y; } GLvec2; 
+
+#endif
+
+/* ================================================================
+   KSDOS Game Loader and Boot Menu
+   Auto-detection and execution of PS1/DOOM games at boot
+   ================================================================ */
 
 #ifndef KSDOS_OPENGL_H
 #define KSDOS_OPENGL_H
@@ -210,6 +229,9 @@ typedef struct {
     GLboolean hardware_accelerated;
     void* hardware_context;
     
+    const void* texcoord_array_pointer; // Adicione esta linha
+    int texcoord_array_size;             // Geralmente 2 para (s, t)
+    int texcoord_array_stride;
 } GLcontext;
 
 /* ================================================================ */

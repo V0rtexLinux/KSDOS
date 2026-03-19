@@ -4,7 +4,6 @@
    ================================================================ */
 
 #include "opengl.h"
-#include <math.h>
 
 /* Global OpenGL Context */
 static GLcontext gl_context;

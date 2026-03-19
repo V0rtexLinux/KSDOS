@@ -4,6 +4,8 @@
    ================================================================ */
 
 #include "ksdos-sdk.h"
+#include <stddef.h>
+#include "kutils.h"
 
 /* Boot menu configuration */
 #define BOOT_MENU_TIMEOUT  50000000  /* 50 seconds */
@@ -114,7 +116,6 @@ static void boot_menu_display(void) {
 static int boot_menu_wait_input(void) {
     extern unsigned char kbd_getchar(void);
     extern int kbd_key_available(void);
-    extern void delay(unsigned int);
     
     int countdown = 50;  /* 50 seconds */
     int iterations = 0;
@@ -226,7 +227,6 @@ void ksdos_boot_menu(void) {
             tty_puts_center(12, "Loading...", 0x0E);
             
             /* Small delay for effect */
-            extern void delay(unsigned int);
             delay(2000000);
             
             /* Launch the selected function */
@@ -243,7 +243,6 @@ void ksdos_boot_menu(void) {
 void ksdos_auto_run_game(const char* game_type) {
     extern void tty_clear(void);
     extern void tty_puts_center(int, const char*, unsigned char);
-    extern void delay(unsigned int);
     
     tty_clear();
     
