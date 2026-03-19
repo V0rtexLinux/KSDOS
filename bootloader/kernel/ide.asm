@@ -176,18 +176,13 @@ ide_run:
     mov si, ide_line_len
     add si, ax
     ; Actually ide_line_len is an array of words...
-    ; index = ide_cur_row * 2 bytes
+    ; Index = ide_cur_row * 2 bytes
     mov ax, [ide_cur_row]
     shl ax, 1
+    mov bx, ax          ; [span_5](start_span)Move the calculated offset into BX[span_5](end_span)
     mov si, ide_line_len
-    add si, ax
-    mov ax, [si]            ; current line length
-    dec ax
-    cmp [ide_cur_col], ax
-    jge .main_loop
-    inc word [ide_cur_col]
-    call ide_redraw_cursor
-    jmp .main_loop
+    add si, bx          ; [span_6](start_span)Now SI points to the correct word[span_6](end_span)
+    mov ax, [si]        ; [span_7](start_span)Valid 16-bit addressing[span_7](end_span)
 
 .do_home:
     mov word [ide_cur_col], 0
@@ -659,7 +654,7 @@ ide_redraw_all:
     push dx
     push si
 
-    ; Title bar (row 0)
+    ; --- Title bar (row 0) ---
     mov dh, 0
     mov dl, 0
     call vid_set_cursor
@@ -667,7 +662,8 @@ ide_redraw_all:
     call vid_set_attr
     mov si, str_ide_title
     call vid_print
-    ; Print filename
+
+    ; --- Print filename ---
     cmp byte [ide_filename], 0
     jne .has_name
     mov si, str_ide_noname
@@ -676,37 +672,45 @@ ide_redraw_all:
     mov si, ide_filename
 .print_name:
     call vid_print
-    ; Modified marker
+
+    ; --- Modified marker ---
     cmp byte [ide_modified], 0
     je .no_mod
     mov al, '*'
     call vid_putchar
 .no_mod:
 
-    ; Content rows (rows 1..IDE_VIEW_H)
+    ; --- Content rows (rows 1..IDE_VIEW_H) ---
     mov al, IDE_ATTR_NORMAL
     call vid_set_attr
     mov cx, IDE_VIEW_H
     mov byte [_ide_vrow], 1
+
 .content_row:
     push cx
-    ; Calculate absolute line number
+    ; Calculate absolute line number: (vrow - 1) + top_row
     movzx ax, byte [_ide_vrow]
     dec ax
     add ax, [ide_top_row]
-    ; Row = _ide_vrow
+    
+    ; Set cursor position
     mov dh, [_ide_vrow]
     mov dl, 0
     call vid_set_cursor
+
+    ; Check if we are past the end of the file
     cmp ax, [ide_line_cnt]
     jge .blank_row
-    ; Print line content
+
+    ; --- FIXED: Calculate buffer offset correctly ---
     push ax
     mov bx, IDE_LINE_W
-    mul bx
+    mul bx              ; AX = line_index * 80
+    mov bx, ax          ; Move result to BX (valid 16-bit pointer)
     mov si, ide_buf
-    add si, ax
+    add si, bx          ; SI = base + offset
     pop ax
+
     mov cx, IDE_LINE_W
 .char_out:
     lodsb
@@ -716,8 +720,8 @@ ide_redraw_all:
     dec cx
     jnz .char_out
     jmp .row_done
+
 .pad_row:
-    ; Pad with spaces to end of line
     test cx, cx
     jz .row_done
 .pad:
@@ -725,15 +729,16 @@ ide_redraw_all:
     call vid_putchar
     loop .pad
     jmp .row_done
+
 .blank_row:
-    ; Print ~ for empty line (like vi)
-    mov al, '~'
+    mov al, '~'         ; vi-style empty line indicator
     call vid_putchar
     mov cx, 79
 .blank_pad:
     mov al, ' '
     call vid_putchar
     loop .blank_pad
+
 .row_done:
     inc byte [_ide_vrow]
     pop cx
@@ -864,9 +869,12 @@ ide_load:
     push ax
     mov ax, di
     mov dx, IDE_LINE_W
-    mul dx
-    mov [ide_buf + ax + bx], al
+    mul dx              ; AX = row * 80
+    add ax, bx          ; AX = (row * 80) + column
+    mov si, ide_buf
+    add si, ax          ; [span_10](start_span)Use SI as the final pointer[span_10](end_span)
     pop ax
+    mov [si], al        ; [span_11](start_span)SUCCESS: SI is a valid 16-bit index[span_11](end_span)
 
     ; Update length
     push bx
