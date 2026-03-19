@@ -1429,6 +1429,7 @@ str_help:
     db "  XCOPY   FIND    SORT    MORE    MEM     VER", 0x0A
     db "  VOL     DATE    TIME    ECHO    SET     DEBUG", 0x0A
     db "  PAUSE   REM     HALT    EXIT    REBOOT  HELP", 0x0A
+    db "  CD      MD      RD      DELTREE      TREE", 0x0A
     db "Engines (Mode 13h 320x200):", 0x0A
     db "  OPENGL   16-bit software GL renderer", 0x0A
     db "  PSYQ     PSYq ship engine (sdk/psyq/)", 0x0A
