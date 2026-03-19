@@ -8,11 +8,14 @@ sh_line:    times 128 db 0
 sh_cmd:     times 32  db 0
 sh_arg:     times 96  db 0
 sh_cwd:     db "A:\", 0
+            times 60  db 0      ; room for deep paths (total 64 bytes)
 
 ; ---- Shared temps ----
-_sh_tmp11:  times 12 db 0
+_sh_tmp11:   times 12 db 0
 _sh_namebuf: times 16 db 0
 _sh_type_sz: dw 0
+_sh_dir_ent: dw 0               ; saved dir entry pointer for sh_DIR
+_sh_new_clus: dw 0              ; allocated cluster for sh_MD / sh_RD
 
 ; ============================================================
 ; shell_run: main shell loop
@@ -187,6 +190,14 @@ cmd_table:
     dw cmd_s_MORE,    sh_MORE
     dw cmd_s_DISKCOPY, sh_DISKCOPY
     dw cmd_s_SYS,     sh_SYS
+    dw cmd_s_CD,      sh_CD
+    dw cmd_s_CHDIR,   sh_CD
+    dw cmd_s_MD,      sh_MD
+    dw cmd_s_MKDIR,   sh_MD
+    dw cmd_s_RD,      sh_RD
+    dw cmd_s_RMDIR,   sh_RD
+    dw cmd_s_DELTREE, sh_DELTREE
+    dw cmd_s_TREE,    sh_TREE
     dw 0, 0             ; sentinel
 
 ; Command name strings (uppercase)
@@ -224,6 +235,14 @@ cmd_s_SORT:     db "SORT",     0
 cmd_s_MORE:     db "MORE",     0
 cmd_s_DISKCOPY: db "DISKCOPY", 0
 cmd_s_SYS:      db "SYS",      0
+cmd_s_CD:       db "CD",       0
+cmd_s_CHDIR:    db "CHDIR",    0
+cmd_s_MD:       db "MD",       0
+cmd_s_MKDIR:    db "MKDIR",    0
+cmd_s_RD:       db "RD",       0
+cmd_s_RMDIR:    db "RMDIR",    0
+cmd_s_DELTREE:  db "DELTREE",  0
+cmd_s_TREE:     db "TREE",     0
 
 sh_dispatch:
     push ax
@@ -271,7 +290,7 @@ sh_CLS:
     ret
 
 sh_DIR:
-    call fat_load_root
+    call fat_load_dir
     ; Header
     mov al, ATTR_NORMAL
     call vid_set_attr
@@ -280,9 +299,9 @@ sh_DIR:
     mov si, sh_cwd
     call vid_println
     ; Iterate entries
-    mov bx, 0              ; file count
+    xor bx, bx             ; file count
     mov si, DIR_BUF
-    mov cx, [bpb_rootent]
+    call fat_max_entries    ; CX = entry count
 .dl:
     test cx, cx
     jz .dir_done
@@ -296,16 +315,18 @@ sh_DIR:
     jnz .dn
     test byte [si+11], 0x0F
     jnz .dn
-    ; Format name
+    ; Save entry pointer
+    mov [_sh_dir_ent], si
+    ; Format name into _sh_namebuf
     push si
     push cx
     push bx
     mov di, _sh_namebuf
-    call fat_format_name    ; converts [si] to [di]
+    call fat_format_name
     pop bx
     pop cx
     pop si
-    ; Print name (12 chars wide)
+    ; Print name (13 chars wide, padded)
     push si
     push cx
     push bx
@@ -315,16 +336,28 @@ sh_DIR:
     mov cx, 13
     sub cx, ax
     jle .name_done
-.np: mov al, ' '
+.np:
+    mov al, ' '
     call vid_putchar
     loop .np
 .name_done:
-    ; Size
+    ; Restore entry pointer into SI
+    mov si, [_sh_dir_ent]
+    ; Print <DIR> tag or file size
+    test byte [si+11], 0x10
+    jz .show_size
+    push si
+    mov si, str_dir_tag
+    call vid_print
+    pop si
+    jmp .show_date
+.show_size:
     mov ax, [si+28]
     call print_word_dec
+.show_date:
     mov al, ' '
     call vid_putchar
-    ; Date
+    ; Date field at offset 24
     mov ax, [si+24]
     push ax
     and ax, 0x1F
@@ -343,11 +376,10 @@ sh_DIR:
     add ax, 1980
     call print_word_dec
     call vid_nl
-    inc bx
     pop bx
     pop cx
     pop si
-    inc bx                  ; file count (outer)
+    inc bx
 .dn:
     add si, 32
     dec cx
@@ -724,6 +756,583 @@ sh_DISKCOPY:
 sh_SYS:
     mov si, str_stub_sys
     call vid_println
+    ret
+
+; ============================================================
+; sh_CD / sh_CHDIR: change directory
+; ============================================================
+sh_CD:
+    cmp byte [sh_arg], 0
+    je .show_cwd
+    ; Check for ".."
+    cmp byte [sh_arg], '.'
+    jne .check_root
+    cmp byte [sh_arg+1], '.'
+    jne .show_cwd
+    ; Go up one level
+    cmp word [cur_dir_cluster], 0
+    je .at_root
+    call fat_load_dir
+    mov ax, [DIR_BUF + 32 + 26]    ; ".." entry cluster (offset 32 = 2nd entry)
+    mov [cur_dir_cluster], ax
+    call sh_cwd_pop
+    ret
+.at_root:
+    ret
+.check_root:
+    cmp byte [sh_arg], '\'
+    je .go_root
+    cmp byte [sh_arg+1], ':'
+    jne .normal
+    cmp byte [sh_arg+2], '\'
+    je .go_root
+.normal:
+    ; Convert name and search current dir
+    mov si, sh_arg
+    mov di, _sh_tmp11
+    call str_to_dosname
+    call fat_load_dir
+    mov si, _sh_tmp11
+    call sh_find_dir
+    jc .not_found
+    test byte [di+11], 0x10
+    jz .not_a_dir
+    ; Get cluster and update cwd
+    mov ax, [di+26]
+    mov [cur_dir_cluster], ax
+    ; Format name for display
+    push di
+    mov si, di
+    mov di, _sh_namebuf
+    call fat_format_name
+    pop di
+    mov si, _sh_namebuf
+    call sh_cwd_push
+    ret
+.go_root:
+    mov word [cur_dir_cluster], 0
+    mov byte [sh_cwd+0], 'A'
+    mov byte [sh_cwd+1], ':'
+    mov byte [sh_cwd+2], '\'
+    mov byte [sh_cwd+3], 0
+    ret
+.show_cwd:
+    mov si, sh_cwd
+    call vid_println
+    ret
+.not_found:
+    mov si, str_no_dir
+    call vid_println
+    ret
+.not_a_dir:
+    mov si, str_not_dir
+    call vid_println
+    ret
+
+; ============================================================
+; sh_MD / sh_MKDIR: create a directory
+; ============================================================
+sh_MD:
+    cmp byte [sh_arg], 0
+    je .syntax
+    ; Convert name to 8.3
+    mov si, sh_arg
+    mov di, _sh_tmp11
+    call str_to_dosname
+    ; Load current directory
+    call fat_load_dir
+    ; Check if already exists
+    mov si, _sh_tmp11
+    call sh_find_dir
+    jnc .exists
+    ; Allocate a free cluster
+    call fat_alloc_cluster
+    cmp ax, 0xFFFF
+    je .no_space
+    mov [_sh_new_clus], ax
+    ; Mark cluster as end-of-chain in FAT
+    push ax
+    mov bx, 0x0FFF
+    call fat_set_entry
+    pop ax
+    ; Write . and .. entries into the new cluster
+    call sh_init_dir_cluster
+    ; Find a free slot in DIR_BUF
+    call fat_find_free_slot
+    cmp di, 0xFFFF
+    je .no_space
+    ; Write 11-byte name
+    push si
+    push di
+    mov si, _sh_tmp11
+    mov cx, 11
+    rep movsb
+    pop di
+    pop si
+    ; Attribute = 0x10 (directory)
+    mov byte [di+11], 0x10
+    ; Clear reserved/time fields
+    xor ax, ax
+    mov [di+12], ax
+    mov [di+14], ax
+    mov [di+16], ax
+    mov [di+18], ax
+    mov [di+20], ax
+    mov [di+22], ax
+    mov [di+24], ax
+    ; Starting cluster
+    mov ax, [_sh_new_clus]
+    mov [di+26], ax
+    ; File size = 0
+    mov [di+28], ax
+    mov [di+30], ax
+    ; Save directory and FAT
+    call fat_save_dir
+    call fat_save_fat
+    mov si, str_mkdir_ok
+    call vid_println
+    ret
+.exists:
+    mov si, str_dir_exists
+    call vid_println
+    ret
+.no_space:
+    mov si, str_no_space
+    call vid_println
+    ret
+.syntax:
+    mov si, str_syntax
+    call vid_println
+    ret
+
+; ============================================================
+; sh_RD / sh_RMDIR: remove an empty directory
+; ============================================================
+sh_RD:
+    cmp byte [sh_arg], 0
+    je .syntax
+    ; Find the directory entry
+    mov si, sh_arg
+    mov di, _sh_tmp11
+    call str_to_dosname
+    call fat_load_dir
+    mov si, _sh_tmp11
+    call sh_find_dir
+    jc .not_found
+    ; Save cluster of target dir
+    mov ax, [di+26]
+    mov [_sh_new_clus], ax
+    ; Temporarily enter the target dir to check if empty
+    push word [cur_dir_cluster]
+    mov [cur_dir_cluster], ax
+    call fat_load_dir
+    ; Check entry at offset 64 (third entry) - must be 0x00 for empty dir
+    mov al, [DIR_BUF + 64]
+    cmp al, 0x00
+    je .empty
+    cmp al, 0xE5
+    je .empty
+    ; Not empty
+    pop word [cur_dir_cluster]
+    call fat_load_dir
+    mov si, str_dir_notempty
+    call vid_println
+    ret
+.empty:
+    pop word [cur_dir_cluster]
+    call fat_load_dir
+    ; Re-find the entry
+    mov si, _sh_tmp11
+    call sh_find_dir
+    jc .not_found
+    ; Mark as deleted
+    mov byte [di], 0xE5
+    ; Free the cluster in FAT
+    mov ax, [_sh_new_clus]
+    xor bx, bx
+    call fat_set_entry
+    ; Save
+    call fat_save_dir
+    call fat_save_fat
+    mov si, str_rd_ok
+    call vid_println
+    ret
+.not_found:
+    mov si, str_no_dir
+    call vid_println
+    ret
+.syntax:
+    mov si, str_syntax
+    call vid_println
+    ret
+
+; ============================================================
+; sh_DELTREE: delete directory and all its contents
+; ============================================================
+sh_DELTREE:
+    cmp byte [sh_arg], 0
+    je .syntax
+    ; Find the directory
+    mov si, sh_arg
+    mov di, _sh_tmp11
+    call str_to_dosname
+    call fat_load_dir
+    mov si, _sh_tmp11
+    call sh_find_dir
+    jc .not_found
+    ; Save target cluster
+    mov ax, [di+26]
+    mov [_sh_new_clus], ax
+    ; Enter target dir and delete all its contents
+    push word [cur_dir_cluster]
+    mov [cur_dir_cluster], ax
+    call fat_load_dir
+    call fat_max_entries        ; CX = entry count
+    mov si, DIR_BUF
+    add si, 64                  ; skip . and ..
+    sub cx, 2
+    jle .done_inner
+.del_loop:
+    test cx, cx
+    jz .done_inner
+    cmp byte [si], 0x00
+    je .done_inner
+    cmp byte [si], 0xE5
+    je .del_next
+    ; Free cluster chain of this entry
+    push cx
+    push si
+    mov ax, [si+26]
+.free_chain:
+    cmp ax, 0x002
+    jb .chain_done
+    cmp ax, 0xFF8
+    jae .chain_done
+    push ax
+    call fat_next_cluster
+    mov bx, ax              ; next cluster
+    pop ax                  ; current cluster
+    push bx
+    xor bx, bx
+    call fat_set_entry      ; free current
+    pop ax                  ; next cluster
+    jmp .free_chain
+.chain_done:
+    pop si
+    pop cx
+    mov byte [si], 0xE5
+.del_next:
+    add si, 32
+    dec cx
+    jmp .del_loop
+.done_inner:
+    call fat_save_dir
+    ; Return to parent
+    pop word [cur_dir_cluster]
+    call fat_load_dir
+    ; Find and delete the directory entry itself
+    mov si, _sh_tmp11
+    call sh_find_dir
+    jc .not_found
+    mov byte [di], 0xE5
+    ; Free the dir cluster
+    mov ax, [_sh_new_clus]
+    xor bx, bx
+    call fat_set_entry
+    call fat_save_dir
+    call fat_save_fat
+    mov si, str_deltree_ok
+    call vid_println
+    ret
+.not_found:
+    mov si, str_no_dir
+    call vid_println
+    ret
+.syntax:
+    mov si, str_syntax
+    call vid_println
+    ret
+
+; ============================================================
+; sh_TREE: display directory structure
+; ============================================================
+sh_TREE:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    ; Print current path
+    mov si, sh_cwd
+    call vid_println
+    ; Load and show current directory
+    call fat_load_dir
+    call fat_max_entries        ; CX = entry count
+    mov si, DIR_BUF
+.tl:
+    test cx, cx
+    jz .td
+    cmp byte [si], 0x00
+    je .td
+    cmp byte [si], 0xE5
+    je .tn
+    test byte [si+11], 0x08
+    jnz .tn
+    test byte [si+11], 0x0F
+    jnz .tn
+    cmp byte [si], '.'
+    je .tn
+    push cx
+    push si
+    ; Is it a directory?
+    test byte [si+11], 0x10
+    jz .tfile
+    ; Save entry pointer via memory (DX not valid as mem base in 16-bit)
+    mov [_sh_dir_ent], si
+    ; Print directory prefix
+    mov si, str_tree_dir
+    call vid_print
+    ; Print name
+    mov si, [_sh_dir_ent]
+    mov di, _sh_namebuf
+    call fat_format_name
+    mov si, _sh_namebuf
+    call vid_println
+    ; Show subdir contents (one level deep)
+    mov si, [_sh_dir_ent]
+    mov ax, [si+26]             ; subdir starting cluster
+    push [cur_dir_cluster]
+    mov [cur_dir_cluster], ax
+    call fat_load_dir
+    call fat_max_entries        ; CX = subdir entry count (outer CX is on stack)
+    mov dx, cx                  ; DX = subdir count (used as simple counter, not mem base)
+    mov bx, DIR_BUF
+.sub_loop:
+    test dx, dx
+    jz .sub_done
+    cmp byte [bx], 0x00
+    je .sub_done
+    cmp byte [bx], 0xE5
+    je .sub_next
+    test byte [bx+11], 0x08
+    jnz .sub_next
+    cmp byte [bx], '.'
+    je .sub_next
+    push dx
+    push bx
+    mov si, str_tree_sub
+    call vid_print
+    mov si, bx                  ; SI = entry pointer (valid base register)
+    mov di, _sh_namebuf
+    call fat_format_name
+    mov si, _sh_namebuf
+    call vid_println
+    pop bx
+    pop dx
+.sub_next:
+    add bx, 32
+    dec dx
+    jmp .sub_loop
+.sub_done:
+    pop [cur_dir_cluster]
+    call fat_load_dir
+    pop si
+    pop cx
+    jmp .tn
+.tfile:
+    ; Save entry pointer and print file prefix
+    mov [_sh_dir_ent], si
+    mov si, str_tree_file
+    call vid_print
+    mov si, [_sh_dir_ent]
+    mov di, _sh_namebuf
+    call fat_format_name
+    mov si, _sh_namebuf
+    call vid_println
+    pop si
+    pop cx
+.tn:
+    add si, 32
+    dec cx
+    jmp .tl
+.td:
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================
+; Helper: sh_find_dir - find a directory entry with ATTR_DIR (0x10)
+;         in DIR_BUF by 11-byte name DS:SI
+; Output: DI = entry, CF=0 found; CF=1 not found
+; ============================================================
+sh_find_dir:
+    push cx
+    push dx
+    call fat_max_entries    ; CX
+    mov di, DIR_BUF
+    mov dx, si
+.loop:
+    test cx, cx
+    jz .nf
+    cmp byte [di], 0x00
+    je .nf
+    cmp byte [di], 0xE5
+    je .skip
+    test byte [di+11], 0x10
+    jz .skip
+    push cx
+    push di
+    push si
+    mov si, dx
+    mov cx, 11
+    repe cmpsb
+    pop si
+    pop di
+    pop cx
+    je .found
+.skip:
+    add di, 32
+    dec cx
+    jmp .loop
+.nf:
+    stc
+    pop dx
+    pop cx
+    ret
+.found:
+    clc
+    pop dx
+    pop cx
+    ret
+
+; ============================================================
+; Helper: sh_cwd_push - append null-term name DS:SI to sh_cwd
+; ============================================================
+sh_cwd_push:
+    push ax
+    push si
+    push di
+    ; Find end of sh_cwd
+    mov di, sh_cwd
+.find_end:
+    cmp byte [di], 0
+    je .append
+    inc di
+    jmp .find_end
+.append:
+.copy:
+    lodsb
+    test al, al
+    jz .add_slash
+    stosb
+    jmp .copy
+.add_slash:
+    mov al, '\'
+    stosb
+    mov byte [di], 0
+    pop di
+    pop si
+    pop ax
+    ret
+
+; ============================================================
+; Helper: sh_cwd_pop - remove last path component from sh_cwd
+; ============================================================
+sh_cwd_pop:
+    push ax
+    push si
+    push di
+    ; Start after "A:\" (offset 3)
+    mov si, sh_cwd
+    add si, 3
+    mov di, 0               ; will hold offset of last '\'
+.scan:
+    cmp byte [si], 0
+    je .do_pop
+    cmp byte [si], '\'
+    jne .snext
+    mov di, si
+.snext:
+    inc si
+    jmp .scan
+.do_pop:
+    ; di = address of last '\'
+    test di, di
+    jz .at_root
+    inc di
+    mov byte [di], 0
+    jmp .pop_done
+.at_root:
+    mov si, sh_cwd
+    mov byte [si+3], 0
+.pop_done:
+    pop di
+    pop si
+    pop ax
+    ret
+
+; ============================================================
+; Helper: sh_init_dir_cluster - write . and .. into new dir cluster
+;   [_sh_new_clus] = new cluster, [cur_dir_cluster] = parent
+; ============================================================
+sh_init_dir_cluster:
+    push ax
+    push bx
+    push cx
+    push di
+    push es
+    ; Zero FILE_BUF (512 bytes)
+    mov ax, ds
+    mov es, ax
+    mov di, FILE_BUF
+    mov cx, 256
+    xor ax, ax
+    rep stosw
+    ; "." entry at FILE_BUF+0
+    mov byte [FILE_BUF+0],  '.'
+    mov byte [FILE_BUF+1],  ' '
+    mov byte [FILE_BUF+2],  ' '
+    mov byte [FILE_BUF+3],  ' '
+    mov byte [FILE_BUF+4],  ' '
+    mov byte [FILE_BUF+5],  ' '
+    mov byte [FILE_BUF+6],  ' '
+    mov byte [FILE_BUF+7],  ' '
+    mov byte [FILE_BUF+8],  ' '
+    mov byte [FILE_BUF+9],  ' '
+    mov byte [FILE_BUF+10], ' '
+    mov byte [FILE_BUF+11], 0x10    ; directory
+    mov ax, [_sh_new_clus]
+    mov [FILE_BUF+26], ax           ; cluster = this dir
+    ; ".." entry at FILE_BUF+32
+    mov byte [FILE_BUF+32+0],  '.'
+    mov byte [FILE_BUF+32+1],  '.'
+    mov byte [FILE_BUF+32+2],  ' '
+    mov byte [FILE_BUF+32+3],  ' '
+    mov byte [FILE_BUF+32+4],  ' '
+    mov byte [FILE_BUF+32+5],  ' '
+    mov byte [FILE_BUF+32+6],  ' '
+    mov byte [FILE_BUF+32+7],  ' '
+    mov byte [FILE_BUF+32+8],  ' '
+    mov byte [FILE_BUF+32+9],  ' '
+    mov byte [FILE_BUF+32+10], ' '
+    mov byte [FILE_BUF+32+11], 0x10 ; directory
+    mov ax, [cur_dir_cluster]
+    mov [FILE_BUF+32+26], ax        ; cluster = parent
+    ; Write FILE_BUF to disk at new cluster
+    mov ax, [_sh_new_clus]
+    call cluster_to_lba
+    mov bx, FILE_BUF
+    call disk_write_sector
+    pop es
+    pop di
+    pop cx
+    pop bx
+    pop ax
     ret
 
 ; ============================================================

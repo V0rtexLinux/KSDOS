@@ -181,7 +181,7 @@ fat_save_root:
     ret
 
 ; ============================================================
-; fat_find: find 11-byte name DS:SI in root dir
+; fat_find: find 11-byte name DS:SI in current directory
 ; Output: DI = DIR_BUF offset of entry, or 0xFFFF if not found
 ;         CF=0 found, CF=1 not found
 ; ============================================================
@@ -190,10 +190,10 @@ fat_find:
     push si
     push dx
 
-    call fat_load_root
+    call fat_load_dir
 
     mov di, DIR_BUF
-    mov cx, [bpb_rootent]
+    call fat_max_entries    ; CX = entry count for current dir
     mov dx, si              ; save original SI
 
 .loop:
@@ -335,8 +335,8 @@ fat_delete:
     jc .nf
     ; Mark as deleted
     mov byte [di], 0xE5
-    ; Write root dir back
-    call fat_save_root
+    ; Write directory back
+    call fat_save_dir
     clc
     pop ax
     pop di
@@ -345,4 +345,195 @@ fat_delete:
     stc
     pop ax
     pop di
+    ret
+
+; ============================================================
+; cur_dir_cluster: 0 = root directory, nonzero = subdir cluster
+; ============================================================
+cur_dir_cluster: dw 0
+
+; ============================================================
+; fat_max_entries: returns CX = max entries in current directory
+; ============================================================
+fat_max_entries:
+    cmp word [cur_dir_cluster], 0
+    je .root
+    mov cx, 16
+    ret
+.root:
+    mov cx, [bpb_rootent]
+    ret
+
+; ============================================================
+; fat_load_dir: load current directory into DIR_BUF
+; ============================================================
+fat_load_dir:
+    cmp word [cur_dir_cluster], 0
+    je fat_load_root
+    push ax
+    push bx
+    push es
+    mov ax, [cur_dir_cluster]
+    call cluster_to_lba
+    push ds
+    pop es
+    mov bx, DIR_BUF
+    call disk_read_sector
+    pop es
+    pop bx
+    pop ax
+    ret
+
+; ============================================================
+; fat_save_dir: write DIR_BUF back to current directory
+; ============================================================
+fat_save_dir:
+    cmp word [cur_dir_cluster], 0
+    je fat_save_root
+    push ax
+    push bx
+    push es
+    mov ax, [cur_dir_cluster]
+    call cluster_to_lba
+    push ds
+    pop es
+    mov bx, DIR_BUF
+    call disk_write_sector
+    pop es
+    pop bx
+    pop ax
+    ret
+
+; ============================================================
+; fat_find_free_slot: find first free (0x00 or 0xE5) entry in DIR_BUF
+; Output: DI = address of free entry, 0xFFFF if none
+; ============================================================
+fat_find_free_slot:
+    push cx
+    call fat_max_entries
+    mov di, DIR_BUF
+.loop:
+    test cx, cx
+    jz .none
+    cmp byte [di], 0x00
+    je .found
+    cmp byte [di], 0xE5
+    je .found
+    add di, 32
+    dec cx
+    jmp .loop
+.none:
+    mov di, 0xFFFF
+.found:
+    pop cx
+    ret
+
+; ============================================================
+; fat_alloc_cluster: find a free cluster (FAT12 entry = 0x000)
+; Output: AX = cluster number, 0xFFFF if disk full
+; ============================================================
+fat_alloc_cluster:
+    push bx
+    push cx
+    mov bx, 2
+.loop:
+    cmp bx, [bpb_totsec]
+    jge .full
+    mov ax, bx
+    call fat_next_cluster
+    test ax, ax
+    jz .found
+    inc bx
+    jmp .loop
+.found:
+    mov ax, bx
+    pop cx
+    pop bx
+    ret
+.full:
+    mov ax, 0xFFFF
+    pop cx
+    pop bx
+    ret
+
+; ============================================================
+; fat_set_entry: set FAT12 entry for cluster AX to value BX
+; ============================================================
+_fse_clus: dw 0
+fat_set_entry:
+    push si
+    push cx
+    push dx
+    push ax
+    mov [_fse_clus], ax
+    mov cx, 3
+    mul cx                  ; AX = cluster * 3
+    shr ax, 1               ; AX = cluster * 3 / 2 (byte offset)
+    mov si, ax
+    add si, FAT_BUF
+    pop ax                  ; restore cluster (for odd/even test)
+    test ax, 1
+    jz .even
+    ; odd cluster: upper 12 bits
+    mov cx, [si]
+    and cx, 0x000F
+    mov dx, bx
+    shl dx, 4
+    or cx, dx
+    mov [si], cx
+    jmp .fse_done
+.even:
+    ; even cluster: lower 12 bits
+    mov cx, [si]
+    and cx, 0xF000
+    and bx, 0x0FFF
+    or cx, bx
+    mov [si], cx
+.fse_done:
+    pop dx
+    pop cx
+    pop si
+    ret
+
+; ============================================================
+; fat_save_fat: write FAT1 and FAT2 back to disk
+; ============================================================
+fat_save_fat:
+    push ax
+    push bx
+    push cx
+    push es
+    mov ax, ds
+    mov es, ax
+    ; Write FAT1
+    mov bx, FAT_BUF
+    mov ax, [fat_lba]
+    mov cx, [bpb_spf]
+.wf1:
+    test cx, cx
+    jz .wf2start
+    call disk_write_sector
+    add bx, 512
+    inc ax
+    dec cx
+    jmp .wf1
+.wf2start:
+    ; Write FAT2
+    mov bx, FAT_BUF
+    mov ax, [fat_lba]
+    add ax, [bpb_spf]
+    mov cx, [bpb_spf]
+.wf2:
+    test cx, cx
+    jz .wsf_done
+    call disk_write_sector
+    add bx, 512
+    inc ax
+    dec cx
+    jmp .wf2
+.wsf_done:
+    pop es
+    pop cx
+    pop bx
+    pop ax
     ret
