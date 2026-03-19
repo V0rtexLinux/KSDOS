@@ -626,23 +626,37 @@ ide_clamp_col:
 ; ============================================================
 ide_ensure_visible:
     push ax
-    ; Scroll up if cursor above view
+    push bx
+
+    ; 1. Se o cursor estiver ACIMA da visão (ide_cur_row < ide_top_row)
     mov ax, [ide_cur_row]
     cmp ax, [ide_top_row]
     jge .check_below
+    
+    ; Move o topo para a linha do cursor (scroll up instantâneo)
     mov [ide_top_row], ax
     jmp .done
+
 .check_below:
+    ; 2. Se o cursor estiver ABAIXO da visão (ide_cur_row >= ide_top_row + IDE_VIEW_H)
     mov ax, [ide_top_row]
-    add ax, IDE_VIEW_H
-    cmp [ide_cur_row], ax
-    jl .done
+    add ax, IDE_VIEW_H - 1    ; AX = última linha visível
+    
+    mov bx, [ide_cur_row]
+    cmp bx, ax                ; Compara cursor com o limite inferior
+    jle .done                 ; Se for menor ou igual, está visível.
+    
+    ; Se chegou aqui, precisamos de scroll down.
+    ; Novo top_row = ide_cur_row - (IDE_VIEW_H - 1)
     mov ax, [ide_cur_row]
     sub ax, IDE_VIEW_H - 1
     mov [ide_top_row], ax
+
 .done:
+    pop bx
     pop ax
     ret
+
 
 ; ============================================================
 ; ide_redraw_all: redraw entire editor screen
