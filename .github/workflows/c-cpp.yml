@@ -17,7 +17,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y nasm
     - name: run nasm check
-      run: nasm -f bin -i bootloader/kernel/ -l list.txt bootloader/kernel/ksdos.asm
+      run: nasm -f bin -i bootloader/kernel/ -o build/ksdos.bin -l list.txt bootloader/kernel/ksdos.asm
     - uses: actions/checkout@v4
     - name: make
       run: make
