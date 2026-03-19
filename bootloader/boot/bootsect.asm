@@ -204,19 +204,15 @@ rd_sectors:
     or cl, ah                   ; cylinder high 2 bits
 
     pop bx                      ; BX = buffer offset (ES:BX is buffer)
-    pop cx
-    pop ax                      ; restore LBA
+    ; CX still holds CHS (cylinder/sector) — do NOT pop cx before INT 13h
 
     ; Read 1 sector
-    push ax
-    push bx
-    push cx
     mov ax, 0x0201              ; AH=02 (read), AL=01 (sectors)
     mov dl, [DRVNUM]
     int 0x13
-    pop cx
-    pop bx
-    pop ax
+
+    pop cx                      ; restore sector count
+    pop ax                      ; restore LBA
 
     jc .rs_err
 
