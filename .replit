@@ -27,4 +27,4 @@ outputType = "vnc"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace && make image && mkdir -p /tmp/xdg-runtime && XDG_RUNTIME_DIR=/tmp/xdg-runtime DISPLAY=:0 qemu-system-i386 -kernel build/ksdos.elf -vga std -display sdl -m 256"
+args = "cd /home/runner/workspace && make image && make run"

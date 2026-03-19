@@ -1,82 +1,85 @@
-# ============================================================
-# KSDOS - Top-level Makefile
-# ============================================================
+# =============================================================================
+# KSDOS Build System
+# Produces a 1.44MB FAT12 floppy image (disk.img) bootable in QEMU
+# =============================================================================
 
-ifeq ($(OS),Windows_NT)
-    MKDIR = if not exist "$(subst /,\,$(1))" mkdir "$(subst /,\,$(1))"
-else
-    MKDIR = mkdir -p $(1)
-endif
+NASM     := nasm
+PERL     := perl
+QEMU     := qemu-system-i386
 
-BUILD_DIR ?= build
-override BUILD_DIR := $(abspath $(BUILD_DIR))
+BUILD    := build
+BOOT_DIR := bootloader/boot
+KERN_DIR := bootloader/kernel
+TOOLS    := tools
 
-export CROSS_TOOLCHAIN CC LD BUILD_DIR MKDIR
+BOOTSECT_SRC := $(BOOT_DIR)/bootsect.asm
+KERNEL_SRC   := $(KERN_DIR)/ksdos.asm
+MBR_SRC      := $(BOOT_DIR)/mbr.asm
 
-# SDK paths
-PS1_SDK  ?= $(abspath sdk/psyq)
-DOOM_SDK ?= $(abspath sdk/gold4)
-export PS1_SDK DOOM_SDK
+BOOTSECT_BIN := $(BUILD)/bootsect.bin
+KERNEL_BIN   := $(BUILD)/ksdos.bin
+MBR_BIN      := $(BUILD)/mbr.bin
+DISK_IMG     := $(BUILD)/disk.img
 
-.PHONY: image build-bootloader build-games configure-sdk clean help
+.PHONY: all image run run-sdl run-serial clean help
 
-# ── Primary target: ELF kernel + bootable image ───────────────
-image: build-bootloader
-	@echo "[KSDOS] Kernel ELF: $(BUILD_DIR)/ksdos.elf"
-	@echo "[KSDOS] To run:  make run"
+all: image
 
-# Verify the Multiboot header is present (requires grub-file if available)
-verify:
-	@if command -v grub-file >/dev/null 2>&1; then \
-	    grub-file --is-x86-multiboot $(BUILD_DIR)/ksdos.elf && \
-	    echo "Multiboot header: OK" || echo "Multiboot header: NOT FOUND"; \
-	else \
-	    echo "grub-file not available — skipping verification"; \
-	fi
+image: $(DISK_IMG)
 
-# Launch in QEMU using the -kernel flag (native Multiboot support)
+$(BOOTSECT_BIN): $(BOOTSECT_SRC) | $(BUILD)
+	@echo "[NASM] Assembling boot sector..."
+	$(NASM) -f bin -o $@ $<
+	@echo "[OK]   bootsect.bin"
+
+$(KERNEL_BIN): $(KERNEL_SRC) | $(BUILD)
+	@echo "[NASM] Assembling kernel (KSDOS.SYS)..."
+	$(NASM) -f bin -o $@ $<
+	@echo "[OK]   ksdos.bin"
+
+$(MBR_BIN): $(MBR_SRC) | $(BUILD)
+	@echo "[NASM] Assembling MBR..."
+	$(NASM) -f bin -o $@ $<
+	@echo "[OK]   mbr.bin"
+
+$(DISK_IMG): $(BOOTSECT_BIN) $(KERNEL_BIN) | $(BUILD)
+	@echo "[PERL] Building FAT12 disk image..."
+	$(PERL) $(TOOLS)/mkimage.pl $(BOOTSECT_BIN) $(KERNEL_BIN) $(DISK_IMG)
+	@echo "[OK]   disk.img ready"
+
+$(BUILD):
+	mkdir -p $(BUILD)
+
 run: image
+	@echo "[QEMU] Booting KSDOS v2.0..."
 	mkdir -p /tmp/xdg-runtime
-	XDG_RUNTIME_DIR=/tmp/xdg-runtime DISPLAY=:0 \
-	qemu-system-i386 \
-	    -kernel $(BUILD_DIR)/ksdos.elf \
-	    -vga std \
-	    -display sdl \
-	    -m 256
+	XDG_RUNTIME_DIR=/tmp/xdg-runtime \
+	$(QEMU) \
+		-fda $(DISK_IMG) \
+		-boot a \
+		-m 4 \
+		-vga std \
+		-display vnc=:0 \
+		-no-reboot \
+		-name "KSDOS v2.0"
 
-# ── Sub-targets ───────────────────────────────────────────────
-build-bootloader:
-	$(call MKDIR, $(BUILD_DIR))
-	$(MAKE) -C ./bootloader/core
+run-sdl: image
+	$(QEMU) -fda $(DISK_IMG) -boot a -m 4 -vga std -display sdl -no-reboot
 
-build-games:
-	@echo "Building PS1 game..."
-	$(MAKE) -C ./games/psx psx-game
-	@echo "Building DOOM game..."
-	$(MAKE) -C ./games/doom doom-game
-
-configure-sdk:
-	@if [ -f "sdk/sdk-config.sh" ]; then \
-	    bash "sdk/sdk-config.sh"; \
-	else \
-	    echo "SDK configuration script not found."; \
-	fi
+run-serial: image
+	$(QEMU) -fda $(DISK_IMG) -boot a -m 4 -nographic -no-reboot
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD)
 
 help:
-	@echo "KSDOS Build System"
-	@echo "=================="
+	@echo "KSDOS Build System - 16-bit Real Mode OS"
+	@echo "========================================="
 	@echo "Targets:"
-	@echo "  image            - Build ELF kernel (Multiboot-compatible)"
-	@echo "  run              - Build and launch in QEMU"
-	@echo "  verify           - Check Multiboot header (needs grub-file)"
-	@echo "  build-bootloader - Build kernel only"
-	@echo "  build-games      - Build PS1 + DOOM games"
-	@echo "  configure-sdk    - Configure SDK environment"
-	@echo "  clean            - Remove build artifacts"
+	@echo "  all / image   - Build disk.img (default)"
+	@echo "  run           - Build and boot in QEMU (VNC)"
+	@echo "  run-sdl       - Build and boot (SDL window)"
+	@echo "  run-serial    - Boot headless (serial only)"
+	@echo "  clean         - Remove build directory"
 	@echo ""
-	@echo "SDK paths:"
-	@echo "  PS1_SDK  = $(PS1_SDK)"
-	@echo "  DOOM_SDK = $(DOOM_SDK)"
+	@echo "Output: $(DISK_IMG) (1.44MB FAT12 floppy)"
