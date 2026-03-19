@@ -1,35 +1,49 @@
-OUTPUT_FORMAT("binary") /*
-						The MBR partition is way too small to fit an ELF
-						loader, so instead the MBR gap will just contain raw bytes
-						*/
+/* ============================================================
+   KSDOS Kernel Linker Script — ELF32, Multiboot-compatible
+   Reference: https://wiki.osdev.org/Bare_Bones#Linking_the_Kernel
+   ============================================================ */
+
+ENTRY(_start)
 
 SECTIONS {
-	/*
-	CORE FORMAT:
-	- setup: 0x7E00, size: 256 bytes
-	- start: 0x7F00, size: ..
-	*/
-    . = 0x7F00;
+    /*
+     * Kernel loaded at 1 MiB (0x00100000) — safe zone above BIOS data,
+     * IVT and EBDA.  This is the canonical higher-half-ready load address
+     * recommended by the OSDev community.
+     */
+    . = 1M;
 
-	/* Where out code sits */
-	.text : {
-		*(.text.early) /* Mostly to make sure the entry is always at the start */
-		*(.text)
-	}
+    /*
+     * .multiboot must be within the first 8 KiB of the kernel binary
+     * so that GRUB / QEMU can find the Multiboot magic.
+     */
+    .multiboot ALIGN(4) : {
+        *(.multiboot)
+    }
 
-	/* Uninitialized data, e.g. STACK */
-	.bss : {
-		*(.bss)
-		*(COMMON)
-	}
+    /* Executable code */
+    .text ALIGN(4096) : {
+        *(.text.early)    /* entry point comes first */
+        *(.text*)
+    }
 
-	/* Read-only data */
-	.rodata : {
-		*(.rodata)
-	}
+    /* Read-only data (strings, const tables, …) */
+    .rodata ALIGN(4096) : {
+        *(.rodata*)
+    }
 
-	/* Read/write data */
-	.data : {
-		*(.data)
-	}
+    /* Initialised read/write data */
+    .data ALIGN(4096) : {
+        *(.data*)
+    }
+
+    /*
+     * Uninitialised data (BSS) — zeroed by the bootloader when it
+     * honours the Multiboot "memory info" flag.  The kernel also
+     * zeroes it manually during early init for safety.
+     */
+    .bss ALIGN(4096) : {
+        *(COMMON)
+        *(.bss*)
+    }
 }

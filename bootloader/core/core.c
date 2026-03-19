@@ -1,8 +1,17 @@
 /* KSDOS - MS-DOS style kernel with game dev commands
    VGA text mode 80x25  +  Bochs VBE OpenGL (640x480x32)
-   PSYq (PS1) and GOLD4 (DOOM) engine launchers              */
+   PSYq (PS1) and GOLD4 (DOOM) engine launchers
+
+   OSDev-compliant structure:
+     - Multiboot header in entry.s
+     - GDT (flat model, ring 0 + ring 3)  → gdt.c
+     - IDT (32 CPU exceptions + 16 IRQs)  → idt.c / isr.s
+     - PIC remapping (IRQs → vectors 32+) → pic.c
+   Reference: https://wiki.osdev.org/Expanded_Main_Page       */
 
 #include "ksdos-sdk.h"
+#include "gdt.h"
+#include "idt.h"
 
 /* ================================================================== */
 /* VGA / Bochs VBE defines                                           */
@@ -103,6 +112,9 @@ static void read_line(int row, int col, char *buffer, int maxlen, int mask);
 static void do_login(void);
 static void boot_sequence(void);
 static void draw_shell(void);
+static void out_print(const char *s, unsigned char attr);
+static void out_cls(void);
+static void sdk_show_projects(void);
 static void vbe_init(void);
 static void vbe_shutdown(void);
 static void gl_clear(unsigned int color);
@@ -671,7 +683,7 @@ static void sdk_init_system(void) {
     }
     
     out_print("Available game projects:", ATTR_YELLOW);
-    ksdos_show_projects();
+    sdk_show_projects();
 }
 
 static void sdk_show_projects(void) {
@@ -1005,20 +1017,40 @@ static void draw_shell(void){
 }
 
 /* ================================================================== */
-/* Kernel entry point                                                */
+/* Kernel entry point — called from entry.s (_start)                */
+/* Multiboot magic and info pointer are passed on the stack.        */
+/* Reference: https://wiki.osdev.org/Bare_Bones                     */
 /* ================================================================== */
-void core_main(void){
-    tty_cursor_enable(); tty_clear();
+void kernel_main(unsigned int mb_magic, unsigned int mb_info) {
+    (void)mb_magic;
+    (void)mb_info;
+
+    /* ── OSDev-required initialisation sequence ── */
+
+    /* 1. Load a proper GDT (flat model, ring 0 + ring 3 segments)
+          Reference: https://wiki.osdev.org/GDT_Tutorial            */
+    gdt_init();
+
+    /* 2. Remap the PIC and install the IDT (32 exceptions + 16 IRQs)
+          Reference: https://wiki.osdev.org/IDT
+                     https://wiki.osdev.org/8259_PIC                */
+    idt_init();
+
+    /* ── Kernel proper ── */
+    tty_cursor_enable();
+    tty_clear();
     boot_sequence();
     do_login();
-    
+
     /* Show boot menu for game selection */
     ksdos_boot_menu();
-    
-    /* Initialize SDK system */
+
+    /* Initialise SDK system */
     ksdos_init_sdk_system();
-    
-    /* Enter shell */
+
+    /* Enter the interactive shell */
     draw_shell();
-    for(;;) __asm__ volatile("cli;hlt");
+
+    /* Should never reach here */
+    for (;;) __asm__ volatile ("cli; hlt");
 }
