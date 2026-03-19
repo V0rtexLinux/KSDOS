@@ -732,7 +732,10 @@ gl16_cube_demo:
     pop di
     pop cx
     inc di
-    loop .proj_loop
+    dec cx
+    jz .proj_done
+    jmp .proj_loop
+.proj_done:
 
     ; Draw edges
     mov si, cube_edges
@@ -926,7 +929,10 @@ gl16_triangle_demo:
 
     inc byte [_tdemo_c]
     pop cx
-    loop .tri_loop
+    dec cx
+    jz .tri_done
+    jmp .tri_loop
+.tri_done:
 
     add word [_tdemo_frame], 2
     cmp word [_tdemo_frame], 360
