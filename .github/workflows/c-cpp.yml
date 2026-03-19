@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Install NASM
+      run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm
     - uses: actions/checkout@v4
     - name: make
       run: make
