@@ -1,4 +1,4 @@
-# KSDOS - KernelSoft DOS Game Dev Edition
+# KSDOS - KernelSoft Disk Operating System
 
 A bare-metal x86 OS running in QEMU with PS1 (PSYq) and DOOM (GOLD4) game dev environments.
 
