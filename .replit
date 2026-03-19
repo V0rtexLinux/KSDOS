@@ -1,4 +1,4 @@
-modules = ["dotnet-7.0", "bash"]
+modules = ["bash"]
 [agent]
 expertMode = true
 

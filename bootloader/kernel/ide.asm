@@ -379,7 +379,7 @@ ide_insert_char:
     jmp .shift
 .do_ins:
     mov al, [_ide_ins_c]
-    mov [si + dx], al
+    mov [si + bx], al
     inc word [di]           ; line length++
     inc word [ide_cur_col]  ; advance cursor
 
