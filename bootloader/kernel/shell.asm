@@ -2487,28 +2487,61 @@ str_b4:     db "Type HELP for commands. MUSIC for songs. NET <host> for internet
 str_b5:     db "Engines: OPENGL | PSYQ | GOLD4 | IDE  System: A:\SYSTEM32", 0
 
 str_help:
-    db "File commands:", 0x0A
-    db "  DIR     TYPE    COPY    XCOPY   DEL     REN", 0x0A
-    db "  ATTRIB  LABEL   CHKDSK  FORMAT  DISKCOPY  SYS", 0x0A
-    db "  FIND    SORT    MORE    CD      MD      RD", 0x0A
-    db "  DELTREE TREE    CLS     VER     VOL", 0x0A
-    db "Shell commands:", 0x0A
-    db "  ECHO    SET     MEM     DATE    TIME    DEBUG", 0x0A
-    db "  PAUSE   REM     HALT    EXIT    REBOOT  HELP", 0x0A
+    db "KSDOS Command Reference", 0x0A
+    db "-----------------------", 0x0A
+    db "File Management:", 0x0A
+    db "  DIR   [path]       List files and directories", 0x0A
+    db "  TYPE  <file>       Display contents of a text file", 0x0A
+    db "  COPY  <src> <dst>  Copy a file to a new location", 0x0A
+    db "  XCOPY <src> <dst>  Copy files including subdirectories", 0x0A
+    db "  DEL   <file>       Delete (erase) a file from disk", 0x0A
+    db "  REN   <old> <new>  Rename a file", 0x0A
+    db "  FIND  <str> <file> Search for a string inside a file", 0x0A
+    db "  SORT  <file>       Sort lines of a file alphabetically", 0x0A
+    db "  MORE  <file>       Display file one page at a time", 0x0A
+    db "  ATTRIB <file>      Show or modify file attributes", 0x0A
+    db "Disk & Volume:", 0x0A
+    db "  FORMAT [/Q]        Format the floppy disk (erases all!)", 0x0A
+    db "  CHKDSK             Check disk integrity and show usage", 0x0A
+    db "  DISKCOPY           Copy entire floppy disk A: to B:", 0x0A
+    db "  LABEL  [name]      View or change the volume label", 0x0A
+    db "  VOL                Show volume label and serial number", 0x0A
+    db "  SYS                Transfer KSDOS system files to disk", 0x0A
+    db "Directories:", 0x0A
+    db "  CD    [path]       Change or display current directory", 0x0A
+    db "  MD    <dir>        Create a new directory", 0x0A
+    db "  RD    <dir>        Remove an empty directory", 0x0A
+    db "  DELTREE <dir>      Delete a directory and all its contents", 0x0A
+    db "  TREE               Display the full directory tree", 0x0A
+    db "Display & Shell:", 0x0A
+    db "  CLS                Clear the screen", 0x0A
+    db "  ECHO  [text]       Print text to the screen", 0x0A
+    db "  VER                Show KSDOS version information", 0x0A
+    db "  DATE               Display the current system date", 0x0A
+    db "  TIME               Display the current system time", 0x0A
+    db "  MEM                Show conventional memory usage", 0x0A
+    db "  SET                Display current environment variables", 0x0A
+    db "  DEBUG              Hex memory debugger (D=dump, Q=quit)", 0x0A
+    db "  IDE   [file]       Open the built-in text editor", 0x0A
+    db "  PAUSE              Wait for any keypress to continue", 0x0A
+    db "  REM   [text]       Comment line, ignored by the shell", 0x0A
+    db "  REBOOT             Perform a warm system reboot", 0x0A
+    db "  EXIT               Reboot (same as REBOOT)", 0x0A
+    db "  HALT               Halt the CPU (safe power-off state)", 0x0A
+    db "  HELP               Show this command reference screen", 0x0A
     db "Media & Network:", 0x0A
-    db "  MUSIC            PC speaker music player (4 songs)", 0x0A
-    db "  NET <host/ip>    Fetch HTTP from the real internet", 0x0A
-    db "Compilers (SYSTEM32):", 0x0A
-    db "  CC  <f.c>        KSDOS-CC C Compiler", 0x0A
-    db "  GCC <f.c>        Alias for CC", 0x0A
-    db "  CPP <f.cpp>      KSDOS-G++ C++ Compiler", 0x0A
-    db "  G++ <f.cpp>      Alias for CPP", 0x0A
-    db "  MASM <f.asm>     KSDOS-ASM Macro Assembler", 0x0A
-    db "  NASM <f.asm>     Alias for MASM", 0x0A
-    db "  CSC  <f.cs>      KSDOS-CSC C# Compiler", 0x0A
-    db "Engines (Mode 13h 320x200):", 0x0A
-    db "  OPENGL   16-bit software GL renderer", 0x0A
-    db "  PSYQ     PSYq ship engine (sdk/psyq/)", 0x0A
-    db "  GOLD4    GOLD4 raycaster engine (sdk/gold4/)", 0x0A
-    db "  IDE [f]  Text editor", 0x0A
+    db "  MUSIC              PC speaker music player (4 songs)", 0x0A
+    db "  NET  <host/ip>     Fetch a webpage via HTTP", 0x0A
+    db "Compilers (run from A:\SYSTEM32\):", 0x0A
+    db "  CC   <file.c>      KSDOS-CC subset C compiler", 0x0A
+    db "  GCC  <file.c>      Alias for CC", 0x0A
+    db "  CPP  <file.cpp>    KSDOS-G++ subset C++ compiler", 0x0A
+    db "  G++  <file.cpp>    Alias for CPP", 0x0A
+    db "  MASM <file.asm>    KSDOS-ASM x86 macro assembler", 0x0A
+    db "  NASM <file.asm>    Alias for MASM", 0x0A
+    db "  CSC  <file.cs>     KSDOS-CSC subset C# compiler", 0x0A
+    db "Engines (Mode 13h 320x200 graphics):", 0x0A
+    db "  OPENGL             16-bit software OpenGL renderer demo", 0x0A
+    db "  PSYQ               PSYq PlayStation-style ship engine", 0x0A
+    db "  GOLD4              GOLD4 DOOM-like raycaster engine", 0x0A
     db 0
