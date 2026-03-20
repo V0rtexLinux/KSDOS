@@ -45,6 +45,9 @@ kernel_entry:
 %include "psyq.asm"
 %include "gold4.asm"
 %include "ide.asm"
+%include "compiler_asm.asm"
+%include "compiler_c.asm"
+%include "compiler_csc.asm"
 %include "shell.asm"
 
 kernel_end:

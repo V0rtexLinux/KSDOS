@@ -2232,8 +2232,35 @@ sh_cc_print_file:
     call vid_print
     ret
 
+; ============================================================
+; sh_load_source: common file loader for compilers
+; Input: sh_arg = filename, banner SI displayed before calling
+; Output: FILE_BUF = source, _sh_type_sz = size, CF=1 on error
+; ============================================================
+sh_load_source:
+    mov si, sh_arg
+    mov di, _sh_tmp11
+    call str_to_dosname
+    call fat_load_dir
+    mov si, _sh_tmp11
+    call fat_find
+    jc .sls_nf
+    ; Get file size and start cluster
+    mov ax, [di+28]         ; file size (low word)
+    mov [_sh_type_sz], ax
+    mov ax, [di+26]         ; start cluster
+    push ax
+    mov di, FILE_BUF
+    call fat_read_file
+    pop ax
+    clc
+    ret
+.sls_nf:
+    stc
+    ret
+
 sh_CC:
-    ; KSDOS-CC C Compiler
+    ; KSDOS-CC Real C Compiler
     cmp byte [sh_arg], 0
     je .usage
     mov si, str_cc_banner
@@ -2242,23 +2269,10 @@ sh_CC:
     call vid_print
     call sh_cc_print_file
     call vid_nl
-    ; Find the .C file
-    mov si, sh_arg
-    mov di, _sh_tmp11
-    call str_to_dosname
-    call fat_load_dir
-    mov si, _sh_tmp11
-    call fat_find
+    call sh_load_source
     jc .not_found
-    ; Show compilation steps
-    mov si, str_cc_pass1
-    call vid_println
-    mov si, str_cc_pass2
-    call vid_println
-    mov si, str_cc_link
-    call vid_println
-    mov si, str_cc_ok
-    call vid_println
+    ; Call the real C compiler
+    call cc_run
     ret
 .not_found:
     mov si, str_no_file
@@ -2270,7 +2284,7 @@ sh_CC:
     ret
 
 sh_CPP:
-    ; KSDOS-G++ C++ Compiler
+    ; KSDOS-G++ Real C++ Compiler (same engine as C)
     cmp byte [sh_arg], 0
     je .usage
     mov si, str_cpp_banner
@@ -2279,24 +2293,10 @@ sh_CPP:
     call vid_print
     call sh_cc_print_file
     call vid_nl
-    ; Find the .CPP file
-    mov si, sh_arg
-    mov di, _sh_tmp11
-    call str_to_dosname
-    call fat_load_dir
-    mov si, _sh_tmp11
-    call fat_find
+    call sh_load_source
     jc .not_found
-    mov si, str_cc_pass1
-    call vid_println
-    mov si, str_cpp_tparse
-    call vid_println
-    mov si, str_cc_pass2
-    call vid_println
-    mov si, str_cc_link
-    call vid_println
-    mov si, str_cpp_ok
-    call vid_println
+    ; C++ uses same engine as C
+    call cc_run
     ret
 .not_found:
     mov si, str_no_file
@@ -2308,7 +2308,7 @@ sh_CPP:
     ret
 
 sh_MASM:
-    ; KSDOS-ASM Macro Assembler (compatible with MASM/NASM)
+    ; KSDOS-ASM Real x86 Assembler (MASM/NASM compatible)
     cmp byte [sh_arg], 0
     je .usage
     mov si, str_masm_banner
@@ -2317,23 +2317,10 @@ sh_MASM:
     call vid_print
     call sh_cc_print_file
     call vid_nl
-    ; Find the .ASM file
-    mov si, sh_arg
-    mov di, _sh_tmp11
-    call str_to_dosname
-    call fat_load_dir
-    mov si, _sh_tmp11
-    call fat_find
+    call sh_load_source
     jc .not_found
-    ; Show assembly passes
-    mov si, str_masm_pass1
-    call vid_println
-    mov si, str_masm_pass2
-    call vid_println
-    mov si, str_masm_link
-    call vid_println
-    mov si, str_masm_ok
-    call vid_println
+    ; Call the real assembler
+    call asm_run
     ret
 .not_found:
     mov si, str_no_file
@@ -2345,7 +2332,7 @@ sh_MASM:
     ret
 
 sh_CSC:
-    ; KSDOS C# Compiler (KSDOS-CSC)
+    ; KSDOS-CSC Real C# Compiler
     cmp byte [sh_arg], 0
     je .usage
     mov si, str_csc_banner
@@ -2354,22 +2341,10 @@ sh_CSC:
     call vid_print
     call sh_cc_print_file
     call vid_nl
-    ; Find the .CS file
-    mov si, sh_arg
-    mov di, _sh_tmp11
-    call str_to_dosname
-    call fat_load_dir
-    mov si, _sh_tmp11
-    call fat_find
+    call sh_load_source
     jc .not_found
-    mov si, str_csc_parse
-    call vid_println
-    mov si, str_csc_emit
-    call vid_println
-    mov si, str_csc_jit
-    call vid_println
-    mov si, str_csc_ok
-    call vid_println
+    ; Call the real C# compiler
+    call csc_run
     ret
 .not_found:
     mov si, str_no_file
