@@ -7,8 +7,9 @@
 #   Sectors 10-18: FAT2
 #   Sectors 19-32: Root directory
 #   Sector 33+:  KSDOS.SYS kernel
+#   Following:   Overlay .OVL files
 #
-# Usage: perl mkimage.pl <bootsect.bin> <ksdos.bin> <output.img>
+# Usage: perl mkimage.pl <bootsect.bin> <ksdos.bin> <output.img> [ovl1.OVL ...]
 # =============================================================================
 use strict;
 use warnings;
@@ -30,8 +31,9 @@ use constant FAT_LBA          => RESERVED_SECS;                                 
 use constant ROOT_LBA         => RESERVED_SECS + FAT_COUNT * SECTORS_PER_FAT;               # 19
 use constant DATA_LBA         => ROOT_LBA + ROOT_DIR_SECTORS;                               # 33
 
-my ($bootsect_file, $kernel_file, $output_file) = @ARGV;
-die "Usage: $0 <bootsect.bin> <kernel.bin> <output.img>\n" unless @ARGV == 3;
+die "Usage: $0 <bootsect.bin> <kernel.bin> <output.img> [overlay.OVL ...]\n" unless @ARGV >= 3;
+
+my ($bootsect_file, $kernel_file, $output_file, @ovl_files) = @ARGV;
 
 # --------------------------------------------------------------------------
 # Read input files
@@ -44,8 +46,8 @@ die "Boot sector must be exactly 512 bytes (got " . length($bootsect) . ")\n"
 die "Boot sector missing signature 0xAA55\n"
     unless substr($bootsect, 510, 2) eq "\x55\xAA";
 
-my $kernel_size    = length($kernel);
-my $kernel_sectors = int(($kernel_size + SECTOR_SIZE - 1) / SECTOR_SIZE);
+my $kernel_size     = length($kernel);
+my $kernel_sectors  = int(($kernel_size + SECTOR_SIZE - 1) / SECTOR_SIZE);
 my $kernel_clusters = $kernel_sectors;  # spc=1
 
 printf "Boot sector: %d bytes\n", length($bootsect);
@@ -54,16 +56,11 @@ printf "Data area starts at sector %d\n", DATA_LBA;
 
 # --------------------------------------------------------------------------
 # Build FAT (FAT12, 512 bytes per cluster = 1 sector)
-# FAT occupies 9 sectors = 4608 bytes
-# Cluster 0: media byte 0xF0 + 0xFF (high nibble)
-# Cluster 1: 0xFF (reserved)
-# Clusters 2..2+N-2: chain
-# Cluster 2+N-1: 0xFFF (end of chain)
 # --------------------------------------------------------------------------
 my $fat_bytes = 9 * SECTOR_SIZE;  # 4608 bytes
 my @fat = (0) x $fat_bytes;
 
-# Entry 0: media descriptor + 0xFF
+# Entry 0: media descriptor
 set_fat12(\@fat, 0, 0xFF0 | MEDIA_BYTE);
 # Entry 1: end-of-chain marker
 set_fat12(\@fat, 1, 0xFFF);
@@ -71,88 +68,73 @@ set_fat12(\@fat, 1, 0xFFF);
 # Cluster chain for KSDOS.SYS starting at cluster 2
 for my $i (0 .. $kernel_clusters - 1) {
     my $clus = $i + 2;
-    if ($i == $kernel_clusters - 1) {
-        set_fat12(\@fat, $clus, 0xFFF);  # end of chain
-    } else {
-        set_fat12(\@fat, $clus, $clus + 1);
-    }
+    set_fat12(\@fat, $clus, ($i == $kernel_clusters - 1) ? 0xFFF : $clus + 1);
 }
 
 my $fat_data = pack("C*", @fat);
 
 # --------------------------------------------------------------------------
-# Build Root Directory (14 sectors = 7168 bytes)
-# Entry 0: Volume label "KSDOS      "
-# Entry 1: KSDOS   SYS
+# Build Root Directory
 # --------------------------------------------------------------------------
 my $root_size = ROOT_DIR_SECTORS * SECTOR_SIZE;  # 7168
 my $root = "\x00" x $root_size;
 
-# Volume label entry (attribute 0x08 = volume label)
-my $vol_entry = "KSDOS      " .  # 11 bytes
-                "\x08" .         # attribute: volume label
-                "\x00" x 10 .    # reserved
-                pack("vv", 0, 0) . # time, date
-                pack("vV", 0, 0);  # start cluster, size
+# Volume label entry
+my $vol_entry = "KSDOS      " .
+                "\x08" .
+                "\x00" x 10 .
+                pack("vv", 0, 0) .
+                pack("vV", 0, 0);
 $root = $vol_entry . substr($root, 32);
 
 # KSDOS.SYS directory entry
-my $date = encode_date(2024, 1, 1);  # Jan 1, 2024
-my $time = encode_time(0, 0, 0);     # 00:00:00
+my $date = encode_date(2024, 1, 1);
+my $time = encode_time(0, 0, 0);
 my $kern_entry =
-    "KSDOS   SYS" .                  # 11 bytes 8+3 name
-    "\x27" .                         # attribute: archive+system+hidden
-    "\x00" x 8 .                     # reserved + time tenths + access date
-    pack("v", 0) .                   # extended attr cluster (high word - FAT12=0)
-    pack("v", $time) .               # write time
-    pack("v", $date) .               # write date
-    pack("v", 2) .                   # starting cluster = 2
-    pack("V", $kernel_size);         # file size
+    "KSDOS   SYS" .
+    "\x27" .
+    "\x00" x 8 .
+    pack("v", 0) .
+    pack("v", $time) .
+    pack("v", $date) .
+    pack("v", 2) .
+    pack("V", $kernel_size);
 
-# Insert kern_entry at offset 32 (after volume label)
 substr($root, 32, 32) = $kern_entry;
 
 # --------------------------------------------------------------------------
-# SYSTEM32 directory
-# Cluster immediately after the kernel occupies one cluster (512 bytes)
+# SYSTEM32 directory — cluster immediately after kernel
 # --------------------------------------------------------------------------
-my $sys32_cluster = 2 + $kernel_clusters;   # first free cluster after kernel
+my $next_free_cluster = 2 + $kernel_clusters;
+my $sys32_cluster = $next_free_cluster++;
 
-# Mark SYSTEM32 dir cluster as end-of-chain in FAT
 set_fat12(\@fat, $sys32_cluster, 0xFFF);
 
-# Build the SYSTEM32 directory cluster (512 bytes = 16 entries)
 my $sys32_dir = "\x00" x SECTOR_SIZE;
 
-# Helper: build a 32-byte directory entry
-# name8_3 = 11 chars, attr, start_cluster, size
 sub make_entry {
     my ($name, $attr, $cluster, $size) = @_;
-    return substr($name . (" " x 11), 0, 11) .  # 11-byte name
-           chr($attr) .                           # attribute
-           "\x00" x 8 .                           # reserved
-           pack("v", 0) .                         # ext attr cluster (hi word)
-           pack("v", encode_time(0, 0, 0)) .      # write time
-           pack("v", encode_date(2024, 1, 1)) .   # write date
-           pack("v", $cluster) .                  # start cluster
-           pack("V", $size);                      # file size
+    return substr($name . (" " x 11), 0, 11) .
+           chr($attr) .
+           "\x00" x 8 .
+           pack("v", 0) .
+           pack("v", encode_time(0, 0, 0)) .
+           pack("v", encode_date(2024, 1, 1)) .
+           pack("v", $cluster) .
+           pack("V", $size);
 }
 
-# "." and ".." entries
-my $dot_entry   = make_entry(".          ", 0x10, $sys32_cluster, 0);
+my $dot_entry    = make_entry(".          ", 0x10, $sys32_cluster, 0);
 my $dotdot_entry = make_entry("..         ", 0x10, 0, 0);
+my $ksdos_sys    = make_entry("KSDOS   SYS", 0x27, 2, $kernel_size);
+my $command_sys  = make_entry("COMMAND SYS", 0x27, 2, $kernel_size);
+my $himem_sys    = make_entry("HIMEM   SYS", 0x06, 0, 0);
+my $emm386_sys   = make_entry("EMM386  SYS", 0x06, 0, 0);
+my $cc_exe       = make_entry("CC      EXE", 0x20, 0, 0);
+my $cpp_exe      = make_entry("CPP     EXE", 0x20, 0, 0);
+my $masm_exe     = make_entry("MASM    EXE", 0x20, 0, 0);
+my $csc_exe      = make_entry("CSC     EXE", 0x20, 0, 0);
 
-# System file stubs (size = 0, cluster = 0 => empty files)
-my $ksdos_sys  = make_entry("KSDOS   SYS", 0x27, 2, $kernel_size);  # ref to kernel
-my $command_sys = make_entry("COMMAND SYS", 0x27, 2, $kernel_size); # alias
-my $himem_sys  = make_entry("HIMEM   SYS", 0x06, 0, 0);
-my $emm386_sys = make_entry("EMM386  SYS", 0x06, 0, 0);
-my $cc_exe     = make_entry("CC      EXE", 0x20, 0, 0);
-my $cpp_exe    = make_entry("CPP     EXE", 0x20, 0, 0);
-my $masm_exe   = make_entry("MASM    EXE", 0x20, 0, 0);
-my $csc_exe    = make_entry("CSC     EXE", 0x20, 0, 0);
-
-# Pack entries into the 512-byte sector
 my @sys32_entries = (
     $dot_entry, $dotdot_entry,
     $ksdos_sys, $command_sys,
@@ -160,28 +142,81 @@ my @sys32_entries = (
     $cc_exe, $cpp_exe, $masm_exe, $csc_exe,
 );
 my $sys32_data = join("", @sys32_entries);
-# Pad/truncate to 512 bytes
 $sys32_data = substr($sys32_data . ("\x00" x SECTOR_SIZE), 0, SECTOR_SIZE);
 
-# SYSTEM32 directory entry in root (attr 0x10 = directory)
+# SYSTEM32 root entry
 my $sys32_root_entry =
-    "SYSTEM32   " .                  # 11 bytes name
-    "\x10" .                         # attribute: directory
-    "\x00" x 8 .                     # reserved
-    pack("v", 0) .                   # ext attr cluster
-    pack("v", encode_time(0,0,0)) .  # write time
-    pack("v", encode_date(2024,1,1)) . # write date
-    pack("v", $sys32_cluster) .      # starting cluster
-    pack("V", 0);                    # size (directories = 0)
+    "SYSTEM32   " .
+    "\x10" .
+    "\x00" x 8 .
+    pack("v", 0) .
+    pack("v", encode_time(0,0,0)) .
+    pack("v", encode_date(2024,1,1)) .
+    pack("v", $sys32_cluster) .
+    pack("V", 0);
 
-# Insert at offset 64 (3rd root entry, after vol label and KSDOS.SYS)
 substr($root, 64, 32) = $sys32_root_entry;
+
+# --------------------------------------------------------------------------
+# Process overlay files — allocate clusters and add root directory entries
+# --------------------------------------------------------------------------
+my @ovl_records;  # each: { data, fat_name, start_cluster, sectors }
+
+my $root_slot = 3;  # next free root entry index (0=vol, 1=kernel, 2=sys32)
+
+for my $ovl_path (@ovl_files) {
+    # Derive FAT 8.3 name from filename (e.g. "CC.OVL" -> "CC      OVL")
+    my $basename = $ovl_path;
+    $basename =~ s{.*/}{};          # strip directory
+    $basename = uc($basename);
+    my ($stem, $ext) = split(/\./, $basename, 2);
+    $stem //= "";
+    $ext  //= "";
+    $stem = substr($stem . "        ", 0, 8);
+    $ext  = substr($ext  . "   ",      0, 3);
+    my $fat_name = $stem . $ext;    # 11 bytes
+
+    my $data = read_file($ovl_path);
+    my $size = length($data);
+    my $sectors = int(($size + SECTOR_SIZE - 1) / SECTOR_SIZE);
+
+    # Allocate cluster chain
+    my $start_cluster = $next_free_cluster;
+    for my $i (0 .. $sectors - 1) {
+        my $clus = $next_free_cluster++;
+        set_fat12(\@fat, $clus, ($i == $sectors - 1) ? 0xFFF : $clus + 1);
+    }
+
+    # Add root directory entry
+    if ($root_slot < ROOT_ENTRIES) {
+        my $entry = make_entry($fat_name, 0x20, $start_cluster, $size);
+        substr($root, $root_slot * 32, 32) = $entry;
+        $root_slot++;
+    } else {
+        warn "Warning: root directory full, skipping $basename\n";
+        next;
+    }
+
+    push @ovl_records, {
+        data          => $data,
+        fat_name      => $fat_name,
+        start_cluster => $start_cluster,
+        sectors       => $sectors,
+        size          => $size,
+    };
+
+    printf "Overlay:     %-11s %d bytes (%d sectors, cluster %d)\n",
+        $fat_name, $size, $sectors, $start_cluster;
+}
 
 # --------------------------------------------------------------------------
 # Assemble disk image
 # --------------------------------------------------------------------------
-my $img_size = TOTAL_SECTORS * SECTOR_SIZE;  # 1,474,560 bytes
+my $img_size = TOTAL_SECTORS * SECTOR_SIZE;
 my $img = "\x00" x $img_size;
+
+# Rebuild fat_data with all entries
+$fat_data = pack("C*", @fat);
 
 # Write boot sector (sector 0)
 substr($img, 0, SECTOR_SIZE) = $bootsect;
@@ -202,11 +237,11 @@ substr($img, DATA_LBA * SECTOR_SIZE, $kernel_size) = $kernel;
 my $sys32_lba = DATA_LBA + $kernel_sectors;
 substr($img, $sys32_lba * SECTOR_SIZE, SECTOR_SIZE) = $sys32_data;
 
-# Rebuild fat_data with SYSTEM32 cluster included
-$fat_data = pack("C*", @fat);
-# Rewrite FAT1 and FAT2
-substr($img, FAT_LBA * SECTOR_SIZE, 9 * SECTOR_SIZE) = $fat_data;
-substr($img, (FAT_LBA + SECTORS_PER_FAT) * SECTOR_SIZE, 9 * SECTOR_SIZE) = $fat_data;
+# Write each overlay at its allocated LBA
+for my $rec (@ovl_records) {
+    my $lba = DATA_LBA + ($rec->{start_cluster} - 2);
+    substr($img, $lba * SECTOR_SIZE, $rec->{size}) = $rec->{data};
+}
 
 # Write output
 open(my $fh, '>', $output_file) or die "Cannot write $output_file: $!";
@@ -218,9 +253,14 @@ printf "Disk image written: %s (%d bytes)\n", $output_file, length($img);
 printf "  Sector 0:    Boot sector\n";
 printf "  Sectors 1-9: FAT1\n";
 printf "  Sectors 10-18: FAT2\n";
-printf "  Sectors 19-32: Root directory (vol label + KSDOS.SYS + SYSTEM32)\n";
+printf "  Sectors 19-32: Root directory\n";
 printf "  Sector 33+:  KSDOS.SYS (%d sectors, cluster 2)\n", $kernel_sectors;
 printf "  Sector %d:    SYSTEM32\\ directory (cluster %d)\n", $sys32_lba, $sys32_cluster;
+for my $rec (@ovl_records) {
+    my $lba = DATA_LBA + ($rec->{start_cluster} - 2);
+    printf "  Sector %d:    %-11s (%d sectors, cluster %d)\n",
+        $lba, $rec->{fat_name}, $rec->{sectors}, $rec->{start_cluster};
+}
 
 # --------------------------------------------------------------------------
 # Subroutines
@@ -239,16 +279,13 @@ sub read_file {
     return $data;
 }
 
-# Set a FAT12 entry
 sub set_fat12 {
     my ($fat, $cluster, $value) = @_;
     my $offset = int($cluster * 3 / 2);
     if ($cluster % 2 == 0) {
-        # Even: lower 12 bits
         $fat->[$offset]     = $value & 0xFF;
         $fat->[$offset + 1] = ($fat->[$offset + 1] & 0xF0) | (($value >> 8) & 0x0F);
     } else {
-        # Odd: upper 12 bits
         $fat->[$offset]     = ($fat->[$offset] & 0x0F) | (($value & 0x0F) << 4);
         $fat->[$offset + 1] = ($value >> 4) & 0xFF;
     }

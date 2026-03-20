@@ -3394,3 +3394,4 @@ str_asm_undef:     db "Undefined symbol: ", 0
 str_asm_range:     db "Jump out of range (use NEAR/WORD).", 0
 str_asm_syms_full: db "Too many symbols.", 0
 str_asm_patch_full: db "Too many forward references.", 0
+str_no_space:      db "Insufficient disk space.", 0

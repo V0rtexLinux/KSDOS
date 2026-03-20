@@ -10,7 +10,9 @@ BITS 16
 ; ---------------------------------------------------------------------------
 ; Overlay load address (must stay above the kernel binary end)
 ; ---------------------------------------------------------------------------
+%ifndef OVERLAY_BUF
 OVERLAY_BUF     equ 0x7000
+%endif
 
 ; ---------------------------------------------------------------------------
 ; Shared data area: fixed addresses in the kernel prefix (set by ksdos.asm)

@@ -10,4 +10,5 @@ ovl_entry:
     call gold4_run
     ret
 
+%include "../opengl.asm"
 %include "../gold4.asm"

@@ -10,4 +10,5 @@ ovl_entry:
     call psyq_ship_demo
     ret
 
+%include "../opengl.asm"
 %include "../psyq.asm"

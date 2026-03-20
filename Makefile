@@ -7,9 +7,13 @@ NASM     := nasm
 PERL     := perl
 QEMU     := qemu-system-i386
 
+# Overlay load address — must match OVERLAY_BUF in ovl_api.asm
+OVL_ORG  := 0x7000
+
 BUILD    := build
 BOOT_DIR := bootloader/boot
 KERN_DIR := bootloader/kernel
+OVL_DIR  := bootloader/kernel/overlays
 TOOLS    := tools
 
 BOOTSECT_SRC := $(BOOT_DIR)/bootsect.asm
@@ -20,6 +24,12 @@ BOOTSECT_BIN := $(BUILD)/bootsect.bin
 KERNEL_BIN   := $(BUILD)/ksdos.bin
 MBR_BIN      := $(BUILD)/mbr.bin
 DISK_IMG     := $(BUILD)/disk.img
+
+# ---------------------------------------------------------------------------
+# Overlay binaries (assembled separately, embedded as .OVL files on disk)
+# ---------------------------------------------------------------------------
+OVL_NAMES := CC MASM CSC MUSIC NET OPENGL PSYQ GOLD4 IDE
+OVL_BINS  := $(patsubst %,$(BUILD)/%.OVL,$(OVL_NAMES))
 
 .PHONY: all image run run-sdl run-serial clean help
 
@@ -42,9 +52,57 @@ $(MBR_BIN): $(MBR_SRC) | $(BUILD)
 	$(NASM) -f bin -i $(BOOT_DIR)/ -o $@ $<
 	@echo "[OK]   mbr.bin"
 
-$(DISK_IMG): $(BOOTSECT_BIN) $(KERNEL_BIN) | $(BUILD)
+# Rule: assemble each overlay (sources live in OVL_DIR, include kernel dir too)
+OVL_FLAGS := -f bin -DOVERLAY_BUF=$(OVL_ORG) -i $(KERN_DIR)/ -i $(OVL_DIR)/
+
+$(BUILD)/CC.OVL:     $(OVL_DIR)/cc.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay CC..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   CC.OVL"
+
+$(BUILD)/MASM.OVL:   $(OVL_DIR)/masm.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay MASM..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   MASM.OVL"
+
+$(BUILD)/CSC.OVL:    $(OVL_DIR)/csc.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay CSC..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   CSC.OVL"
+
+$(BUILD)/MUSIC.OVL:  $(OVL_DIR)/music.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay MUSIC..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   MUSIC.OVL"
+
+$(BUILD)/NET.OVL:    $(OVL_DIR)/net.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay NET..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   NET.OVL"
+
+$(BUILD)/OPENGL.OVL: $(OVL_DIR)/opengl.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay OPENGL..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   OPENGL.OVL"
+
+$(BUILD)/PSYQ.OVL:   $(OVL_DIR)/psyq.ovl.asm    $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay PSYQ..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   PSYQ.OVL"
+
+$(BUILD)/GOLD4.OVL:  $(OVL_DIR)/gold4.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay GOLD4..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   GOLD4.OVL"
+
+$(BUILD)/IDE.OVL:    $(OVL_DIR)/ide.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay IDE..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   IDE.OVL"
+
+$(DISK_IMG): $(BOOTSECT_BIN) $(KERNEL_BIN) $(OVL_BINS) | $(BUILD)
 	@echo "[PERL] Building FAT12 disk image..."
-	$(PERL) $(TOOLS)/mkimage.pl $(BOOTSECT_BIN) $(KERNEL_BIN) $(DISK_IMG)
+	$(PERL) $(TOOLS)/mkimage.pl $(BOOTSECT_BIN) $(KERNEL_BIN) $(DISK_IMG) $(OVL_BINS)
 	@echo "[OK]   disk.img ready"
 
 $(BUILD):
@@ -55,13 +113,13 @@ run: image
 	mkdir -p /tmp/xdg-runtime
 	XDG_RUNTIME_DIR=/tmp/xdg-runtime \
 	$(QEMU) \
-		-fda $(DISK_IMG) \
-		-boot a \
-		-m 4 \
-		-vga std \
-		-display vnc=:0 \
-		-no-reboot \
-		-name "KSDOS v2.0"
+	        -drive format=raw,file=$(DISK_IMG),if=floppy \
+	        -boot a \
+	        -m 4 \
+	        -vga std \
+	        -display vnc=:0 \
+	        -no-reboot \
+	        -name "KSDOS v2.0"
 
 run-sdl: image
 	$(QEMU) -fda $(DISK_IMG) -boot a -m 4 -vga std -display sdl -no-reboot
@@ -83,3 +141,4 @@ help:
 	@echo "  clean         - Remove build directory"
 	@echo ""
 	@echo "Output: $(DISK_IMG) (1.44MB FAT12 floppy)"
+	@echo "Overlays: $(OVL_NAMES)"

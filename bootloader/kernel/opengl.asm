@@ -8,6 +8,246 @@
 ; Fixed-point math: 16.0 integer (no fractions needed for 320x200)
 ; =============================================================================
 
+; ---------------------------------------------------------------------------
+; Graphics constants (guarded — video.asm defines these in the full kernel)
+; ---------------------------------------------------------------------------
+%ifndef VGA_GFX_SEG
+VGA_GFX_SEG     equ 0xA000
+%endif
+%ifndef MODE13_W
+MODE13_W        equ 320
+MODE13_H        equ 200
+%endif
+
+; ---------------------------------------------------------------------------
+; gfx_setup_palette / helpers — copied from video.asm so opengl.asm is
+; self-contained when assembled as an overlay (video.asm not included).
+; Guarded so the kernel build (which includes video.asm) sees no duplicates.
+; ---------------------------------------------------------------------------
+%ifndef GFX_PALETTE_DEFINED
+%define GFX_PALETTE_DEFINED
+
+gfx_set_palette_entry:
+    push ax
+    push bx
+    push cx
+    push dx
+    mov ah, 0x10
+    mov al, 0x10
+    xor bh, 0
+    int 0x10
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+gfx_setup_palette:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push ds
+    push es
+    mov ax, ds
+    mov es, ax
+    mov si, cga_palette
+    mov ax, 0x1012
+    xor bx, bx
+    mov cx, 16
+    mov dx, si
+    int 0x10
+    pop es
+    pop ds
+    mov al, 16
+.pal_loop:
+    cmp al, 255
+    ja .pal_done
+    push ax
+    xor bx, bx
+    mov bl, al
+    mov dh, bl
+    shr dh, 2
+    and dh, 0x3F
+    mov ch, bl
+    shr ch, 1
+    and ch, 0x3F
+    mov cl, bl
+    and cl, 0x3F
+    mov ax, 0x1010
+    int 0x10
+    pop ax
+    inc al
+    jnz .pal_loop
+.pal_done:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+cga_palette:
+    db  0, 0, 0
+    db  0, 0,42
+    db  0,42, 0
+    db  0,42,42
+    db 42, 0, 0
+    db 42, 0,42
+    db 42,21, 0
+    db 42,42,42
+    db 21,21,21
+    db 21,21,63
+    db 21,63,21
+    db 21,63,63
+    db 63,21,21
+    db 63,21,63
+    db 63,63,21
+    db 63,63,63
+
+; gfx_pix: plot one pixel  AL=colour, BX=x (0..319), DX=y (0..199)
+gfx_pix:
+    push ax
+    push bx
+    push cx
+    push dx
+    push di
+    push es
+    cmp bx, MODE13_W
+    jae .gp_skip
+    cmp dx, MODE13_H
+    jae .gp_skip
+    mov cx, ax
+    mov ax, VGA_GFX_SEG
+    mov es, ax
+    mov ax, dx
+    mov di, ax
+    shl di, 8
+    shl ax, 6
+    add di, ax
+    add di, bx
+    mov al, cl
+    stosb
+.gp_skip:
+    pop es
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; gfx_line: Bresenham line  AL=col, BX=x0, CX=y0, DX=x1, SI=y1
+gfx_line:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    push bp
+    push es
+    mov [gl_line_col], al
+    mov [gl_x0], bx
+    mov [gl_y0], cx
+    mov [gl_x1], dx
+    mov [gl_y1], si
+    mov ax, dx
+    sub ax, bx
+    mov [gl_dx], ax
+    jge .gdx_pos
+    neg ax
+.gdx_pos:
+    mov [gl_dx_abs], ax
+    mov ax, si
+    sub ax, cx
+    mov [gl_dy], ax
+    jge .gdy_pos
+    neg ax
+.gdy_pos:
+    mov [gl_dy_abs], ax
+    mov ax, [gl_x0]
+    cmp ax, [gl_x1]
+    jl .gsx_pos
+    mov word [gl_sx], -1
+    jmp .gsy
+.gsx_pos:
+    mov word [gl_sx], 1
+.gsy:
+    mov ax, [gl_y0]
+    cmp ax, [gl_y1]
+    jl .gsy_pos
+    mov word [gl_sy], -1
+    jmp .gerr_init
+.gsy_pos:
+    mov word [gl_sy], 1
+.gerr_init:
+    mov ax, [gl_dx_abs]
+    sub ax, [gl_dy_abs]
+    mov [gl_err], ax
+.gbres_loop:
+    mov bx, [gl_x0]
+    mov dx, [gl_y0]
+    mov al, [gl_line_col]
+    call gfx_pix
+    mov ax, [gl_x0]
+    cmp ax, [gl_x1]
+    jne .gnot_done
+    mov ax, [gl_y0]
+    cmp ax, [gl_y1]
+    jne .gnot_done
+    jmp .gline_done
+.gnot_done:
+    mov ax, [gl_err]
+    shl ax, 1
+    mov [gl_e2], ax
+    mov bx, [gl_dy_abs]
+    neg bx
+    cmp ax, bx
+    jle .gno_x
+    mov bx, [gl_dy_abs]
+    sub [gl_err], bx
+    mov bx, [gl_sx]
+    add [gl_x0], bx
+.gno_x:
+    mov ax, [gl_e2]
+    mov bx, [gl_dx_abs]
+    cmp ax, bx
+    jge .gno_y
+    add [gl_err], bx
+    mov bx, [gl_sy]
+    add [gl_y0], bx
+.gno_y:
+    jmp .gbres_loop
+.gline_done:
+    pop es
+    pop bp
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; Data vars for gfx_line
+gl_line_col:    db 0
+gl_x0:          dw 0
+gl_y0:          dw 0
+gl_x1:          dw 0
+gl_y1:          dw 0
+gl_dx:          dw 0
+gl_dy:          dw 0
+gl_dx_abs:      dw 0
+gl_dy_abs:      dw 0
+gl_sx:          dw 1
+gl_sy:          dw 1
+gl_err:         dw 0
+gl_e2:          dw 0
+
+%endif
+
 ; ---- gl state ----
 gl_mode:        db 0        ; 0=text, 1=graphics
 
