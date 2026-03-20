@@ -31,7 +31,11 @@ DISK_IMG     := $(BUILD)/disk.img
 OVL_NAMES := CC MASM CSC MUSIC NET OPENGL PSYQ GOLD4 IDE
 OVL_BINS  := $(patsubst %,$(BUILD)/%.OVL,$(OVL_NAMES))
 
-.PHONY: all image run run-sdl run-serial clean help
+RASPBERRY := raspberry
+DEPLOY_DIR := $(BUILD)/ksdos-watch
+DEPLOY_TAR := $(BUILD)/ksdos-watch.tar.gz
+
+.PHONY: all image run run-sdl run-serial deploy clean help
 
 all: image
 
@@ -127,6 +131,25 @@ run-sdl: image
 run-serial: image
 	$(QEMU) -fda $(DISK_IMG) -boot a -m 4 -nographic -no-reboot
 
+# ---------------------------------------------------------------------------
+# deploy: package disk.img + Raspberry Pi scripts into ksdos-watch.tar.gz
+# ---------------------------------------------------------------------------
+deploy: image
+	@echo "[PKG]  Building Raspberry Pi deployment package..."
+	rm -rf $(DEPLOY_DIR)
+	mkdir -p $(DEPLOY_DIR)
+	cp $(DISK_IMG) $(DEPLOY_DIR)/disk.img
+	cp $(RASPBERRY)/setup.sh $(DEPLOY_DIR)/setup.sh
+	cp $(RASPBERRY)/launch.sh $(DEPLOY_DIR)/launch.sh
+	cp $(RASPBERRY)/ksdos-watch.service $(DEPLOY_DIR)/ksdos-watch.service
+	chmod +x $(DEPLOY_DIR)/setup.sh $(DEPLOY_DIR)/launch.sh
+	tar -czf $(DEPLOY_TAR) -C $(BUILD) ksdos-watch
+	@echo "[OK]   $(DEPLOY_TAR)"
+	@echo ""
+	@echo "Transfer to your Raspberry Pi:"
+	@echo "  scp $(DEPLOY_TAR) pi@<pi-ip>:~/"
+	@echo "  ssh pi@<pi-ip> 'tar xzf ksdos-watch.tar.gz && sudo bash ksdos-watch/setup.sh'"
+
 clean:
 	rm -rf $(BUILD)
 
@@ -138,7 +161,13 @@ help:
 	@echo "  run           - Build and boot in QEMU (VNC)"
 	@echo "  run-sdl       - Build and boot (SDL window)"
 	@echo "  run-serial    - Boot headless (serial only)"
+	@echo "  deploy        - Package for Raspberry Pi TFT watch"
 	@echo "  clean         - Remove build directory"
 	@echo ""
 	@echo "Output: $(DISK_IMG) (1.44MB FAT12 floppy)"
 	@echo "Overlays: $(OVL_NAMES)"
+	@echo ""
+	@echo "Raspberry Pi deploy:"
+	@echo "  make deploy"
+	@echo "  scp $(DEPLOY_TAR) pi@<ip>:~/"
+	@echo "  ssh pi@<ip> 'tar xzf ksdos-watch.tar.gz && sudo bash ksdos-watch/setup.sh'"
