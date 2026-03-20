@@ -113,6 +113,71 @@ my $kern_entry =
 substr($root, 32, 32) = $kern_entry;
 
 # --------------------------------------------------------------------------
+# SYSTEM32 directory
+# Cluster immediately after the kernel occupies one cluster (512 bytes)
+# --------------------------------------------------------------------------
+my $sys32_cluster = 2 + $kernel_clusters;   # first free cluster after kernel
+
+# Mark SYSTEM32 dir cluster as end-of-chain in FAT
+set_fat12(\@fat, $sys32_cluster, 0xFFF);
+
+# Build the SYSTEM32 directory cluster (512 bytes = 16 entries)
+my $sys32_dir = "\x00" x SECTOR_SIZE;
+
+# Helper: build a 32-byte directory entry
+# name8_3 = 11 chars, attr, start_cluster, size
+sub make_entry {
+    my ($name, $attr, $cluster, $size) = @_;
+    return substr($name . (" " x 11), 0, 11) .  # 11-byte name
+           chr($attr) .                           # attribute
+           "\x00" x 8 .                           # reserved
+           pack("v", 0) .                         # ext attr cluster (hi word)
+           pack("v", encode_time(0, 0, 0)) .      # write time
+           pack("v", encode_date(2024, 1, 1)) .   # write date
+           pack("v", $cluster) .                  # start cluster
+           pack("V", $size);                      # file size
+}
+
+# "." and ".." entries
+my $dot_entry   = make_entry(".          ", 0x10, $sys32_cluster, 0);
+my $dotdot_entry = make_entry("..         ", 0x10, 0, 0);
+
+# System file stubs (size = 0, cluster = 0 => empty files)
+my $ksdos_sys  = make_entry("KSDOS   SYS", 0x27, 2, $kernel_size);  # ref to kernel
+my $command_sys = make_entry("COMMAND SYS", 0x27, 2, $kernel_size); # alias
+my $himem_sys  = make_entry("HIMEM   SYS", 0x06, 0, 0);
+my $emm386_sys = make_entry("EMM386  SYS", 0x06, 0, 0);
+my $cc_exe     = make_entry("CC      EXE", 0x20, 0, 0);
+my $cpp_exe    = make_entry("CPP     EXE", 0x20, 0, 0);
+my $masm_exe   = make_entry("MASM    EXE", 0x20, 0, 0);
+my $csc_exe    = make_entry("CSC     EXE", 0x20, 0, 0);
+
+# Pack entries into the 512-byte sector
+my @sys32_entries = (
+    $dot_entry, $dotdot_entry,
+    $ksdos_sys, $command_sys,
+    $himem_sys, $emm386_sys,
+    $cc_exe, $cpp_exe, $masm_exe, $csc_exe,
+);
+my $sys32_data = join("", @sys32_entries);
+# Pad/truncate to 512 bytes
+$sys32_data = substr($sys32_data . ("\x00" x SECTOR_SIZE), 0, SECTOR_SIZE);
+
+# SYSTEM32 directory entry in root (attr 0x10 = directory)
+my $sys32_root_entry =
+    "SYSTEM32   " .                  # 11 bytes name
+    "\x10" .                         # attribute: directory
+    "\x00" x 8 .                     # reserved
+    pack("v", 0) .                   # ext attr cluster
+    pack("v", encode_time(0,0,0)) .  # write time
+    pack("v", encode_date(2024,1,1)) . # write date
+    pack("v", $sys32_cluster) .      # starting cluster
+    pack("V", 0);                    # size (directories = 0)
+
+# Insert at offset 64 (3rd root entry, after vol label and KSDOS.SYS)
+substr($root, 64, 32) = $sys32_root_entry;
+
+# --------------------------------------------------------------------------
 # Assemble disk image
 # --------------------------------------------------------------------------
 my $img_size = TOTAL_SECTORS * SECTOR_SIZE;  # 1,474,560 bytes
@@ -133,6 +198,16 @@ substr($img, ROOT_LBA * SECTOR_SIZE, $root_size) = $root;
 # Write kernel at data area (sector 33+)
 substr($img, DATA_LBA * SECTOR_SIZE, $kernel_size) = $kernel;
 
+# Write SYSTEM32 directory cluster (immediately after kernel)
+my $sys32_lba = DATA_LBA + $kernel_sectors;
+substr($img, $sys32_lba * SECTOR_SIZE, SECTOR_SIZE) = $sys32_data;
+
+# Rebuild fat_data with SYSTEM32 cluster included
+$fat_data = pack("C*", @fat);
+# Rewrite FAT1 and FAT2
+substr($img, FAT_LBA * SECTOR_SIZE, 9 * SECTOR_SIZE) = $fat_data;
+substr($img, (FAT_LBA + SECTORS_PER_FAT) * SECTOR_SIZE, 9 * SECTOR_SIZE) = $fat_data;
+
 # Write output
 open(my $fh, '>', $output_file) or die "Cannot write $output_file: $!";
 binmode $fh;
@@ -143,8 +218,9 @@ printf "Disk image written: %s (%d bytes)\n", $output_file, length($img);
 printf "  Sector 0:    Boot sector\n";
 printf "  Sectors 1-9: FAT1\n";
 printf "  Sectors 10-18: FAT2\n";
-printf "  Sectors 19-32: Root directory (volume label + KSDOS.SYS entry)\n";
-printf "  Sector 33+:  KSDOS.SYS (%d sectors)\n", $kernel_sectors;
+printf "  Sectors 19-32: Root directory (vol label + KSDOS.SYS + SYSTEM32)\n";
+printf "  Sector 33+:  KSDOS.SYS (%d sectors, cluster 2)\n", $kernel_sectors;
+printf "  Sector %d:    SYSTEM32\\ directory (cluster %d)\n", $sys32_lba, $sys32_cluster;
 
 # --------------------------------------------------------------------------
 # Subroutines
