@@ -163,6 +163,7 @@ str_ovl_err:  db "Error: overlay not found.", 0
 %include "disk.asm"
 %include "fat12.asm"
 %include "auth.asm"
+%include "music.asm"
 %include "shell.asm"
 
 kernel_end:
