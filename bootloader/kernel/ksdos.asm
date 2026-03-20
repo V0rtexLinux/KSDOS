@@ -48,6 +48,8 @@ kernel_entry:
 %include "compiler_asm.asm"
 %include "compiler_c.asm"
 %include "compiler_csc.asm"
+%include "music.asm"
+%include "net.asm"
 %include "shell.asm"
 
 kernel_end:

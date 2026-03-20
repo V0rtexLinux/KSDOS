@@ -216,6 +216,8 @@ cmd_table:
     dw cmd_s_MASM,    sh_MASM
     dw cmd_s_NASM2,   sh_MASM
     dw cmd_s_CSC,     sh_CSC
+    dw cmd_s_MUSIC,   sh_MUSIC
+    dw cmd_s_NET,     sh_NET
     dw 0, 0             ; sentinel
 
 ; Command name strings (uppercase)
@@ -268,6 +270,8 @@ cmd_s_GPP:      db "G++",      0
 cmd_s_MASM:     db "MASM",     0
 cmd_s_NASM2:    db "NASM",     0
 cmd_s_CSC:      db "CSC",      0
+cmd_s_MUSIC:    db "MUSIC",    0
+cmd_s_NET:      db "NET",      0
 
 sh_dispatch:
     push ax
@@ -2355,6 +2359,14 @@ sh_CSC:
     call vid_println
     ret
 
+sh_MUSIC:
+    call music_run
+    ret
+
+sh_NET:
+    call net_run
+    ret
+
 ; ============================================================
 ; sh_banner: print startup banner
 ; ============================================================
@@ -2362,6 +2374,8 @@ sh_banner:
     push ax
     push si
     call vid_clear
+    ; Play startup beep
+    call beep_boot
     mov al, ATTR_CYAN
     call vid_set_attr
     mov si, str_b1
@@ -2469,7 +2483,7 @@ str_tree_file:   db "   ", 0
 str_b1:     db "KSDOS v1.0  16-bit Real Mode x86 Operating System", 0
 str_b2:     db "Copyright (C) KSDOS Project 2024  All rights reserved", 0
 str_b3:     db "====================================================", 0
-str_b4:     db "Type HELP for commands. Type GOLD4 for the 3D engine.", 0
+str_b4:     db "Type HELP for commands. MUSIC for songs. NET <host> for internet.", 0
 str_b5:     db "Engines: OPENGL | PSYQ | GOLD4 | IDE  System: A:\SYSTEM32", 0
 
 str_help:
@@ -2481,14 +2495,17 @@ str_help:
     db "Shell commands:", 0x0A
     db "  ECHO    SET     MEM     DATE    TIME    DEBUG", 0x0A
     db "  PAUSE   REM     HALT    EXIT    REBOOT  HELP", 0x0A
+    db "Media & Network:", 0x0A
+    db "  MUSIC            PC speaker music player (4 songs)", 0x0A
+    db "  NET <host/ip>    Fetch HTTP from the real internet", 0x0A
     db "Compilers (SYSTEM32):", 0x0A
-    db "  CC  <f.c>       KSDOS-CC C Compiler", 0x0A
-    db "  GCC <f.c>       Alias for CC", 0x0A
-    db "  CPP <f.cpp>     KSDOS-G++ C++ Compiler", 0x0A
-    db "  G++ <f.cpp>     Alias for CPP", 0x0A
-    db "  MASM <f.asm>    KSDOS-ASM Macro Assembler", 0x0A
-    db "  NASM <f.asm>    Alias for MASM", 0x0A
-    db "  CSC  <f.cs>     KSDOS-CSC C# Compiler", 0x0A
+    db "  CC  <f.c>        KSDOS-CC C Compiler", 0x0A
+    db "  GCC <f.c>        Alias for CC", 0x0A
+    db "  CPP <f.cpp>      KSDOS-G++ C++ Compiler", 0x0A
+    db "  G++ <f.cpp>      Alias for CPP", 0x0A
+    db "  MASM <f.asm>     KSDOS-ASM Macro Assembler", 0x0A
+    db "  NASM <f.asm>     Alias for MASM", 0x0A
+    db "  CSC  <f.cs>      KSDOS-CSC C# Compiler", 0x0A
     db "Engines (Mode 13h 320x200):", 0x0A
     db "  OPENGL   16-bit software GL renderer", 0x0A
     db "  PSYQ     PSYq ship engine (sdk/psyq/)", 0x0A
