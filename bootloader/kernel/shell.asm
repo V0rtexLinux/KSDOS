@@ -4,16 +4,15 @@
 ; =============================================================================
 
 ; ---- Buffers ----
+; sh_arg, _sh_tmp11, _sh_type_sz are at fixed addresses in the kernel prefix
+; (ksdos.asm 0x0060 / 0x00E0 / 0x00EC) - do NOT redeclare here.
 sh_line:    times 128 db 0
 sh_cmd:     times 32  db 0
-sh_arg:     times 96  db 0
 sh_cwd:     db "A:\", 0
             times 60  db 0      ; room for deep paths (total 64 bytes)
 
-; ---- Shared temps ----
-_sh_tmp11:   times 12 db 0
+; ---- Shell-private temps ----
 _sh_namebuf: times 16 db 0
-_sh_type_sz: dw 0
 _sh_dir_ent: dw 0               ; saved dir entry pointer for sh_DIR
 _sh_new_clus: dw 0              ; allocated cluster for sh_MD / sh_RD
 
@@ -38,8 +37,6 @@ shell_run:
     push dx
     push si
     push di
-
-    call fat_init
 
     call sh_banner
 
@@ -1045,33 +1042,23 @@ sh_DEBUG:
     ret
 
 sh_OPENGL:
-    mov si, str_gl_menu
-    call vid_println
-    call kbd_getkey
-    cmp al, '1'
-    je .glc
-    cmp al, '2'
-    je .glt
-    ret
-.glc:
-    call gl16_cube_demo
-    ret
-.glt:
-    call gl16_triangle_demo
+    mov si, ovl_OPENGL
+    call ovl_load_run
     ret
 
 sh_PSYQ:
-    call psyq_ship_demo
+    mov si, ovl_PSYQ
+    call ovl_load_run
     ret
 
 sh_GOLD4:
-    call gold4_run
+    mov si, ovl_GOLD4
+    call ovl_load_run
     ret
 
 sh_IDE:
-    mov si, sh_arg
-    call ide_run
-    call vid_clear
+    mov si, ovl_IDE
+    call ovl_load_run
     ret
 
 sh_HELP:
@@ -2221,150 +2208,48 @@ sh_init_dir_cluster:
     ret
 
 ; ============================================================
-; Language command handlers: CC/GCC, CPP/G++, MASM/NASM, CSC
+; Overlay dispatch: large modules loaded on demand from disk
 ; ============================================================
 
-; ---- sh_cc_print_file: print filename from sh_arg then newline ----
-sh_cc_print_file:
-    cmp byte [sh_arg], 0
-    je .no_file
-    mov si, sh_arg
-    call vid_print
-    ret
-.no_file:
-    mov si, str_lang_nofile
-    call vid_print
-    ret
-
-; ============================================================
-; sh_load_source: common file loader for compilers
-; Input: sh_arg = filename, banner SI displayed before calling
-; Output: FILE_BUF = source, _sh_type_sz = size, CF=1 on error
-; ============================================================
-sh_load_source:
-    mov si, sh_arg
-    mov di, _sh_tmp11
-    call str_to_dosname
-    call fat_load_dir
-    mov si, _sh_tmp11
-    call fat_find
-    jc .sls_nf
-    ; Get file size and start cluster
-    mov ax, [di+28]         ; file size (low word)
-    mov [_sh_type_sz], ax
-    mov ax, [di+26]         ; start cluster
-    push ax
-    mov di, FILE_BUF
-    call fat_read_file
-    pop ax
-    clc
-    ret
-.sls_nf:
-    stc
-    ret
+; FAT 8.3 filenames (11 bytes, space-padded) for each overlay
+ovl_CC:     db 'C','C',' ',' ',' ',' ',' ',' ','O','V','L'
+ovl_MASM:   db 'M','A','S','M',' ',' ',' ',' ','O','V','L'
+ovl_CSC:    db 'C','S','C',' ',' ',' ',' ',' ','O','V','L'
+ovl_MUSIC:  db 'M','U','S','I','C',' ',' ',' ','O','V','L'
+ovl_NET:    db 'N','E','T',' ',' ',' ',' ',' ','O','V','L'
+ovl_OPENGL: db 'O','P','E','N','G','L',' ',' ','O','V','L'
+ovl_PSYQ:   db 'P','S','Y','Q',' ',' ',' ',' ','O','V','L'
+ovl_GOLD4:  db 'G','O','L','D','4',' ',' ',' ','O','V','L'
+ovl_IDE:    db 'I','D','E',' ',' ',' ',' ',' ','O','V','L'
 
 sh_CC:
-    ; KSDOS-CC Real C Compiler
-    cmp byte [sh_arg], 0
-    je .usage
-    mov si, str_cc_banner
-    call vid_println
-    mov si, str_lang_comp
-    call vid_print
-    call sh_cc_print_file
-    call vid_nl
-    call sh_load_source
-    jc .not_found
-    ; Call the real C compiler
-    call cc_run
-    ret
-.not_found:
-    mov si, str_no_file
-    call vid_println
-    ret
-.usage:
-    mov si, str_cc_usage
-    call vid_println
+    mov si, ovl_CC
+    call ovl_load_run
     ret
 
 sh_CPP:
-    ; KSDOS-G++ Real C++ Compiler (same engine as C)
-    cmp byte [sh_arg], 0
-    je .usage
-    mov si, str_cpp_banner
-    call vid_println
-    mov si, str_lang_comp
-    call vid_print
-    call sh_cc_print_file
-    call vid_nl
-    call sh_load_source
-    jc .not_found
-    ; C++ uses same engine as C
-    call cc_run
-    ret
-.not_found:
-    mov si, str_no_file
-    call vid_println
-    ret
-.usage:
-    mov si, str_cpp_usage
-    call vid_println
+    mov si, ovl_CC
+    call ovl_load_run
     ret
 
 sh_MASM:
-    ; KSDOS-ASM Real x86 Assembler (MASM/NASM compatible)
-    cmp byte [sh_arg], 0
-    je .usage
-    mov si, str_masm_banner
-    call vid_println
-    mov si, str_lang_comp
-    call vid_print
-    call sh_cc_print_file
-    call vid_nl
-    call sh_load_source
-    jc .not_found
-    ; Call the real assembler
-    call asm_run
-    ret
-.not_found:
-    mov si, str_no_file
-    call vid_println
-    ret
-.usage:
-    mov si, str_masm_usage
-    call vid_println
+    mov si, ovl_MASM
+    call ovl_load_run
     ret
 
 sh_CSC:
-    ; KSDOS-CSC Real C# Compiler
-    cmp byte [sh_arg], 0
-    je .usage
-    mov si, str_csc_banner
-    call vid_println
-    mov si, str_lang_comp
-    call vid_print
-    call sh_cc_print_file
-    call vid_nl
-    call sh_load_source
-    jc .not_found
-    ; Call the real C# compiler
-    call csc_run
-    ret
-.not_found:
-    mov si, str_no_file
-    call vid_println
-    ret
-.usage:
-    mov si, str_csc_usage
-    call vid_println
+    mov si, ovl_CSC
+    call ovl_load_run
     ret
 
 sh_MUSIC:
-    call music_run
+    mov si, ovl_MUSIC
+    call ovl_load_run
     ret
 
 sh_NET:
-    call net_run
+    mov si, ovl_NET
+    call ovl_load_run
     ret
 
 ; ============================================================
@@ -2422,7 +2307,6 @@ str_fmt_warn:   db "WARNING: All data will be erased! Continue? (Y/N) ", 0
 str_fmt_done:   db "Format complete.", 0
 str_dbg_hdr:    db "--- KSDOS Debug --- D=dump Q=quit", 0
 str_dbg_cmds:   db "Commands: D=hexdump  Q=quit", 0
-str_gl_menu:    db "OpenGL Demos: 1=Cube  2=Triangles  (press key)", 0
 str_pause:      db "Press any key to continue . . .", 0
 str_reboot:     db "Press any key to reboot . . .", 0
 str_halt:       db "System halted. Power off.", 0
@@ -2440,31 +2324,6 @@ str_diskcopy_ok:  db "Copy complete.", 0
 str_sys_hdr:     db "KSDOS System Transfer", 0
 str_sys_file:    db "Transferring KSDOS.SYS...", 0
 str_sys_ok:      db "System transferred successfully.", 0
-; Language compiler strings
-str_lang_nofile: db "(no file)", 0
-str_lang_comp:   db "Compiling: ", 0
-str_cc_banner:   db "KSDOS-CC C Compiler v1.0  [16-bit real mode]", 0
-str_cc_pass1:    db "Pass 1: Lexical analysis...     [OK]", 0
-str_cc_pass2:    db "Pass 2: Code generation...      [OK]", 0
-str_cc_link:     db "Linking output binary...        [OK]", 0
-str_cc_ok:       db "Compilation successful. Output: A.OUT", 0
-str_cc_usage:    db "Usage: CC <file.c>", 0
-str_cpp_banner:  db "KSDOS-G++ C++ Compiler v1.0  [16-bit real mode]", 0
-str_cpp_tparse:  db "Pass 1b: Template instantiation...  [OK]", 0
-str_cpp_ok:      db "Compilation successful. Output: A.OUT", 0
-str_cpp_usage:   db "Usage: CPP <file.cpp>  or  G++ <file.cpp>", 0
-str_masm_banner: db "KSDOS-ASM Macro Assembler v1.0  [MASM/NASM compatible]", 0
-str_masm_pass1:  db "Pass 1: Symbol resolution...    [OK]", 0
-str_masm_pass2:  db "Pass 2: Binary encoding...      [OK]", 0
-str_masm_link:   db "Writing object file...          [OK]", 0
-str_masm_ok:     db "Assembly successful. Output: A.COM", 0
-str_masm_usage:  db "Usage: MASM <file.asm>  or  NASM <file.asm>", 0
-str_csc_banner:  db "KSDOS-CSC C# Compiler v1.0  [16-bit real mode]", 0
-str_csc_parse:   db "Parsing C# source...            [OK]", 0
-str_csc_emit:    db "Emitting IL bytecode...         [OK]", 0
-str_csc_jit:     db "JIT compilation to x86...       [OK]", 0
-str_csc_ok:      db "Compilation successful. Output: A.EXE", 0
-str_csc_usage:   db "Usage: CSC <file.cs>", 0
 
 ; Directory operation strings
 str_dir_tag:     db "<DIR>", 0
