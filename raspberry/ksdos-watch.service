@@ -15,12 +15,15 @@ Environment="SDL_NOMOUSE=1"
 
 ExecStart=/home/pi/ksdos/launch.sh
 
-# Restart KSDOS automatically if it exits (e.g. after CTRL-ALT-DEL)
+# Restart KSDOS automatically if it exits
 Restart=always
 RestartSec=2
 
-# Allow access to framebuffer and input devices
+# Access to framebuffer, input devices, and uinput (for virtual keyboard)
 SupplementaryGroups=video input
+DeviceAllow=/dev/uinput rw
+DeviceAllow=/dev/fb1 rw
+DeviceAllow=/dev/input/* rw
 
 StandardOutput=journal
 StandardError=journal

@@ -31,7 +31,8 @@ apt-get install -y -qq \
     libsdl2-2.0-0 \
     fbset \
     evtest \
-    python3-pip
+    gcc \
+    libc6-dev
 
 echo "[OK] Packages installed."
 
@@ -95,8 +96,20 @@ cp "$SCRIPT_DIR/disk.img" "$KSDOS_DIR/disk.img" 2>/dev/null || \
 
 cp "$SCRIPT_DIR/launch.sh" "$KSDOS_DIR/launch.sh"
 chmod +x "$KSDOS_DIR/launch.sh"
-chown -R "$SERVICE_USER:$SERVICE_USER" "$KSDOS_DIR"
 
+# Copy and compile the virtual keyboard
+cp "$SCRIPT_DIR/vkbd.c" "$KSDOS_DIR/vkbd.c"
+echo "  Compiling virtual keyboard (vkbd.c)..."
+if gcc -O2 -o "$KSDOS_DIR/vkbd" "$KSDOS_DIR/vkbd.c" -lpthread; then
+    echo "  [OK] vkbd compiled successfully."
+else
+    echo "  [WARN] vkbd compilation failed — touch keyboard will be disabled."
+fi
+
+# Add pi user to input group so vkbd can read touch events without root
+usermod -aG input "$SERVICE_USER"
+
+chown -R "$SERVICE_USER:$SERVICE_USER" "$KSDOS_DIR"
 echo "[OK] Files installed to $KSDOS_DIR"
 
 # --------------------------------------------------------------------------
