@@ -1,4 +1,4 @@
-# KSDOS - 16-bit Real Mode x86 OS
+# KSDOS - KernelSoft Disk Operating System
 
 A from-scratch 16-bit real-mode x86 operating system mimicking MS-DOS, bootable from a 1.44MB FAT12 floppy disk image.
 
