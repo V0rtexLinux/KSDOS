@@ -662,7 +662,8 @@ net_do_arp:
     clc
     jmp .arp_done
 .next:
-    loop .wait
+    dec cx
+    jnz .wait
     stc
 .arp_done:
     pop es
@@ -1706,7 +1707,8 @@ net_http_get:
     jmp .disp
 
 .recv_next:
-    loop .recv_lp
+    dec cx
+    jnz .recv_lp
 
 .recv_to:
 .got_fin:

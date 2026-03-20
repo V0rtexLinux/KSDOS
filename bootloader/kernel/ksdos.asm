@@ -26,6 +26,7 @@ kernel_entry:
     mov cx, 0x2607
     int 0x10
 
+    call auth_init
     call shell_run
 
     cli
@@ -50,6 +51,7 @@ kernel_entry:
 %include "compiler_csc.asm"
 %include "music.asm"
 %include "net.asm"
+%include "auth.asm"
 %include "shell.asm"
 
 kernel_end:
