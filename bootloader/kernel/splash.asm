@@ -197,7 +197,7 @@ splash_complete:
 ; ============================================================
 ; Include necessary BIOS functions
 ; ============================================================
-%include "vgabios.asm"
+%include "../boot/vgabios.asm"
 
 ; External functions from boot sector
 extern prints
