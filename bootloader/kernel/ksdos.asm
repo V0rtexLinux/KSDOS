@@ -94,7 +94,7 @@ kernel_entry:
     ; Show splash screen
     call splash_show
     
-    ; Load complete system
+    ; Load complete system with real progress tracking
     call system_load_complete
 
     call fat_init
@@ -162,6 +162,59 @@ ovl_load_run:
 str_ovl_err:  db "Error: overlay not found.", 0
 
 ; ---------------------------------------------------------------------------
+; system_load_complete: Load system components with real progress tracking
+; ---------------------------------------------------------------------------
+system_load_complete:
+    push ax
+    push si
+    push dx
+    
+    ; Initialize FAT filesystem (15%)
+    mov si, splash_memory
+    call splash_update_progress
+    call splash_delay
+    
+    ; Load critical system data (30%)
+    mov si, splash_critical
+    call splash_update_progress
+    
+    ; Initialize disk system (45%)
+    call disk_init
+    mov si, splash_system32
+    call splash_update_progress
+    call splash_delay
+    
+    ; Load driver systems (60%)
+    mov si, splash_drivers
+    call splash_update_progress
+    
+    ; Initialize system applications (75%)
+    mov si, splash_apps
+    call splash_update_progress
+    call splash_delay
+    
+    ; Load configuration (85%)
+    mov si, splash_config
+    call splash_update_progress
+    
+    ; Start system services (90%)
+    mov si, splash_services
+    call splash_update_progress
+    call splash_delay
+    
+    ; Mount file systems (95%)
+    mov si, splash_filesys
+    call splash_update_progress
+    
+    ; Complete loading
+    call splash_complete
+    
+    pop dx
+    pop si
+    pop ax
+    ret
+
+; ---------------------------------------------------------------------------
 ; Subsystem includes (order matters for forward references)
 ; ---------------------------------------------------------------------------
 %include "string.asm"
@@ -172,7 +225,6 @@ str_ovl_err:  db "Error: overlay not found.", 0
 %include "auth.asm"
 %include "install.asm"
 %include "splash.asm"
-%include "system_loader.asm"
 %include "music.asm"
 %include "shell.asm"
 
