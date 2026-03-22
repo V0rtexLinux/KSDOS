@@ -38,6 +38,36 @@ msg_kernel_load   db "Loading KSDOS kernel...", 0x0D, 0
 msg_complete      db "System ready!", 0x0A, 0x0A, 0
 
 ; ============================================================
+; delay_total_15_seconds: Distribute 15 seconds across all loading stages
+; ============================================================
+delay_total_15_seconds:
+    push cx
+    push dx
+    
+    ; Total delay: 15 seconds = 15 * 18.2 = 273 ticks
+    ; Distribute across 5 stages: 273 / 5 = 54.6 ticks per stage
+    ; Use 55 ticks per stage (approximately 3 seconds per stage)
+    mov cx, 55
+    
+.delay_loop:
+    ; Wait for timer tick
+    mov ah, 0x00
+    int 0x1A        ; Get system time
+    mov dx, cx      ; Save current tick count
+    
+.wait_tick:
+    mov ah, 0x00
+    int 0x1A        ; Get system time again
+    cmp dx, cx      ; Compare with saved tick
+    je .wait_tick   ; Still same tick, keep waiting
+    
+    loop .delay_loop
+    
+    pop dx
+    pop cx
+    ret
+
+; ============================================================
 ; prints: Print string function (from boot sector)
 ; Input: SI = pointer to string
 ; ============================================================
@@ -122,26 +152,31 @@ splash_update:
 .stage0:
     mov si, msg_boot_init
     call splash_print_progress
+    call delay_total_15_seconds
     jmp .done
     
 .stage1:
     mov si, msg_fat_load
     call splash_print_progress
+    call delay_total_15_seconds
     jmp .done
     
 .stage2:
     mov si, msg_root_load
     call splash_print_progress
+    call delay_total_15_seconds
     jmp .done
     
 .stage3:
     mov si, msg_kernel_find
     call splash_print_progress
+    call delay_total_15_seconds
     jmp .done
     
 .stage4:
     mov si, msg_kernel_load
     call splash_print_progress
+    call delay_total_15_seconds
     jmp .done
     
 .done:
