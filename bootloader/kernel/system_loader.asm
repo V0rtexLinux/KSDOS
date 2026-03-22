@@ -7,16 +7,6 @@
 SYSTEM_FILES_COUNT    equ 1024      ; Total system files to load
 SYSTEM_SECTORS_COUNT  equ 2048      ; Total sectors to load (1MB)
 SYSTEM_LOAD_ADDRESS   equ 0x10000   ; Load system at 64KB mark
-SYSTEM32_DIR         equ "SYSTEM32"
-DRIVERS_DIR          equ "DRIVERS"
-ETC_DIR              equ "ETC"
-BIN_DIR              equ "BIN"
-LIB_DIR              equ "LIB"
-TMP_DIR              equ "TMP"
-VAR_DIR              equ "VAR"
-USR_DIR              equ "USR"
-OPT_DIR              equ "OPT"
-HOME_DIR            equ "HOME"
 
 ; ---- File system structure ----
 system_structure:
@@ -1120,7 +1110,6 @@ str_starting_command: db "[CMD]  Starting COMMAND.COM...", 0x0A, 0
 str_command_header:  db "KSDOS Command Interpreter v2.0", 0x0A, 0
 str_command_ready:  db "Type 'HELP' for available commands.", 0x0A, 0
 str_command_prompt: db "C:\>", 0
-str_loading_command: db "[EXEC] Loading COMMAND.COM...", 0
 str_loading_from_disk: db "[DISK] Loading from disk...", 0
 str_executing_command: db "[RUN]  Executing COMMAND.COM...", 0x0A, 0
 str_executing_file: db "[EXEC] Executing file...", 0
