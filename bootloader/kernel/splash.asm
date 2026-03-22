@@ -101,9 +101,9 @@ splash_update:
     push dx
     push si
     
-    ; Calculate progress percentage
-    mov bl, total_steps
-    mul bl                  ; AX = stage * 5
+    ; Calculate progress percentage (stage * 20)
+    mov bl, 20
+    mul bl                  ; AX = stage * 20
     mov byte [boot_progress], al
     
     ; Display appropriate message

@@ -178,7 +178,6 @@ system_load_complete:
     call splash_update
     
     ; Initialize disk system (60%)
-    call disk_init
     mov al, 3
     call splash_update
     
