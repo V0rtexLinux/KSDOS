@@ -173,10 +173,7 @@ splash_print_progress:
     mov al, [boot_progress]
     
     ; Calculate filled portion (percentage of 100 chars)
-    mov bl, 100
-    mul bl                  ; AX = progress * 100
-    mov bl, total_steps * 100
-    div bl                  ; AL = percentage (0-100)
+    ; AL already contains the percentage (0-100)
     
     ; Print filled portion
     mov cl, al
