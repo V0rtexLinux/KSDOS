@@ -639,41 +639,6 @@ short_delay:
     ret
 
 ; ============================================================
-; strcmp_test: Compare filename with known patterns
-; Input: SI = filename, DI = pattern
-; Output: JC = match, JNC = no match
-; ============================================================
-strcmp_test:
-    push ax
-    push si
-    push di
-    
-.compare_loop:
-    mov al, [si]
-    cmp al, [di]
-    jne .different
-    
-    cmp al, 0
-    je .equal
-    
-    inc si
-    inc di
-    jmp .compare_loop
-    
-.different:
-    clc                 ; Clear carry (no match)
-    jmp .done
-    
-.equal:
-    stc                 ; Set carry (match)
-    
-.done:
-    pop di
-    pop si
-    pop ax
-    ret
-
-; ============================================================
 ; system_init_services: Initialize system services
 ; ============================================================
 system_init_services:
@@ -944,27 +909,6 @@ system_short_delay:
 .delay:
     loop .delay
     pop cx
-    ret
-
-; ============================================================
-; vid_print_string: Print string (helper function)
-; ============================================================
-vid_print_string:
-    push ax
-    push si
-    
-.print_loop:
-    lodsb
-    cmp al, 0
-    je .done
-    
-    mov ah, 0x0E
-    int 0x10
-    jmp .print_loop
-    
-.done:
-    pop si
-    pop ax
     ret
 
 ; ---- System status strings ----
