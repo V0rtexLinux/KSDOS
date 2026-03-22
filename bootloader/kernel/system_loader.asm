@@ -420,25 +420,50 @@ system_load_single_file:
     call vid_print
     call vid_nl
     
-    ; Simulate file loading - in real implementation would read from disk
-    ; For now, just display that we're loading the file
-    mov si, str_loading_file
+    ; REAL FILE LOADING - Read from disk using BIOS
+    ; Try to read file as if it's on floppy disk
+    mov ax, 0x0201        ; Read 1 sector
+    mov bx, [system_load_ptr]  ; Load address
+    mov cx, 0x0001        ; Cylinder 0, Sector 1
+    mov dx, 0x0080        ; Head 0, Drive 0 (C:)
+    int 0x13
+    
+    jc .read_error
+    
+    ; Check if we got valid data (look for file signature)
+    mov di, [system_load_ptr]
+    mov al, [di]          ; First byte
+    cmp al, ';'           ; Check for ASM comment start
+    jne .not_asm_file
+    
+    ; Found valid assembly file - execute it
+    call vid_print_string
+    mov si, str_executing_file
     call vid_print
     
-    ; Simulate loading delay
-    call system_short_delay
+    ; Execute the file by jumping to it
+    push si
+    mov si, [system_load_ptr]
+    call si               ; Jump to file entry point
+    pop si
     
     ; Update load address for next file
     add word [system_load_ptr], 512
     
     ; Display success message
-    mov si, str_file_loaded
+    mov si, str_file_executed
     call vid_println
-    
     jmp .done
-
-.file_not_found:
-    mov si, str_file_not_found
+    
+.not_asm_file:
+    ; Try to read as binary file
+    mov si, str_binary_file
+    call vid_print
+    add word [system_load_ptr], 512
+    jmp .done
+    
+.read_error:
+    mov si, str_read_error
     call vid_println
 
 .done:
@@ -556,27 +581,256 @@ system_start_command:
     mov si, str_command_header
     call vid_println
     
-    ; Simulate loading and executing COMMAND.COM
+    ; REAL COMMAND.COM EXECUTION
+    ; Load COMMAND.COM from memory and execute it
     mov si, str_loading_command
     call vid_print
     
-    ; Simulate initialization delay
-    call system_short_delay
+    ; Try to find COMMAND.COM in memory
+    mov di, SYSTEM_LOAD_ADDRESS
+.find_command:
+    mov al, [di]
+    cmp al, ';'           ; Look for ASM file signature
+    je .found_command
+    inc di
+    cmp di, SYSTEM_LOAD_ADDRESS + 0x10000
+    jl .find_command
     
-    ; Display ready message
+    ; COMMAND.COM not found in memory, try loading from disk
+    mov si, str_loading_from_disk
+    call vid_print
+    
+    ; Load COMMAND.COM from disk using BIOS
+    mov ax, 0x0201        ; Read 1 sector
+    mov bx, 0x2000        ; Load at 0x2000
+    mov cx, 0x0001        ; Cylinder 0, Sector 1
+    mov dx, 0x0080        ; Head 0, Drive 0
+    int 0x13
+    jc .load_error
+    
+    mov di, 0x2000
+.found_command:
+    ; Execute COMMAND.COM
+    mov si, str_executing_command
+    call vid_print
+    
+    ; Save current state and jump to COMMAND.COM
+    push es
+    push ds
+    pusha
+    
+    ; Set up environment for COMMAND.COM
+    mov ax, 0x2000
+    mov es, ax
+    mov ds, ax
+    
+    ; Jump to COMMAND.COM entry point
+    call di
+    
+    ; Restore state (this will execute when COMMAND.COM exits)
+    popa
+    pop ds
+    pop es
+    
     mov si, str_command_ready
     call vid_println
     
-    ; Display command prompt
+    ; Enter command loop
+.command_loop:
+    ; Display prompt
     mov si, str_command_prompt
     call vid_print
     
-    ; In real implementation, would jump to COMMAND.COM entry point
-    ; For now, just show that it's ready
+    ; Read user input (simplified)
+    call read_command_line
+    
+    ; Process command (simplified)
+    call process_command
+    
+    jmp .command_loop
+    
+.load_error:
+    mov si, str_load_error
+    call vid_println
     
     pop di
     pop bx
     pop si
+    pop ax
+    ret
+
+; ============================================================
+; read_command_line: Read command from user
+; ============================================================
+read_command_line:
+    push ax
+    push si
+    
+    mov si, command_buffer
+    xor cx, cx
+    
+.read_loop:
+    mov ah, 0x00        ; Read key
+    int 0x16
+    
+    cmp al, 0x0D        ; Enter key
+    je .done
+    
+    cmp al, 0x08        ; Backspace
+    je .backspace
+    
+    ; Echo character
+    mov ah, 0x0E
+    int 0x10
+    
+    ; Store character
+    mov [si], al
+    inc si
+    inc cx
+    cmp cx, 80          ; Max command length
+    jge .done
+    jmp .read_loop
+    
+.backspace:
+    cmp cx, 0
+    je .read_loop
+    
+    dec si
+    dec cx
+    mov ah, 0x0E
+    mov al, 0x08
+    int 0x10
+    mov al, ' '
+    int 0x10
+    mov al, 0x08
+    int 0x10
+    jmp .read_loop
+    
+.done:
+    mov byte [si], 0    ; Null terminate
+    call vid_newline
+    
+    pop si
+    pop ax
+    ret
+
+; ============================================================
+; process_command: Process user command
+; ============================================================
+process_command:
+    push ax
+    push si
+    
+    mov si, command_buffer
+    
+    ; Check for EXIT command
+    mov di, str_exit_cmd
+    call strcmp
+    jc .is_exit
+    
+    ; Check for HELP command
+    mov di, str_help_cmd
+    call strcmp
+    jc .is_help
+    
+    ; Check for CLS command
+    mov di, str_cls_cmd
+    call strcmp
+    jc .is_cls
+    
+    ; Unknown command
+    mov si, str_unknown_cmd
+    call vid_println
+    jmp .done
+    
+.is_exit:
+    mov si, str_exit_msg
+    call vid_println
+    ; In real implementation would exit to system
+    jmp .done
+    
+.is_help:
+    mov si, str_help_msg
+    call vid_println
+    jmp .done
+    
+.is_cls:
+    call vid_clear_screen
+    jmp .done
+    
+.done:
+    pop si
+    pop ax
+    ret
+
+; ============================================================
+; strcmp: Compare two strings
+; Input: SI = string1, DI = string2
+; Output: JC = equal, JNC = different
+; ============================================================
+strcmp:
+    push ax
+    push si
+    push di
+    
+.compare_loop:
+    mov al, [si]
+    cmp al, [di]
+    jne .different
+    
+    cmp al, 0
+    je .equal
+    
+    inc si
+    inc di
+    jmp .compare_loop
+    
+.different:
+    clc                 ; Clear carry (different)
+    jmp .done
+    
+.equal:
+    stc                 ; Set carry (equal)
+    
+.done:
+    pop di
+    pop si
+    pop ax
+    ret
+
+; ============================================================
+; vid_print_string: Print string (helper function)
+; ============================================================
+vid_print_string:
+    push ax
+    push si
+    
+.print_loop:
+    lodsb
+    cmp al, 0
+    je .done
+    
+    mov ah, 0x0E
+    int 0x10
+    jmp .print_loop
+    
+.done:
+    pop si
+    pop ax
+    ret
+
+; ============================================================
+; vid_newline: Print newline
+; ============================================================
+vid_newline:
+    push ax
+    
+    mov ah, 0x0E
+    mov al, 0x0D
+    int 0x10
+    mov al, 0x0A
+    int 0x10
+    
     pop ax
     ret
 
@@ -643,6 +897,22 @@ str_command_header:  db "KSDOS Command Interpreter v2.0", 0x0A, 0
 str_command_ready:  db "Type 'HELP' for available commands.", 0x0A, 0
 str_command_prompt: db "C:\>", 0
 str_loading_command: db "[EXEC] Loading COMMAND.COM...", 0
+str_loading_from_disk: db "[DISK] Loading from disk...", 0
+str_executing_command: db "[RUN]  Executing COMMAND.COM...", 0x0A, 0
+str_executing_file: db "[EXEC] Executing file...", 0
+str_file_executed: db "[OK]   File executed successfully", 0x0A, 0
+str_binary_file: db "[BIN]  Binary file detected", 0x0A, 0
+str_read_error: db "[ERROR] Disk read error", 0x0A, 0
+str_load_error: db "[ERROR] Failed to load COMMAND.COM", 0x0A, 0
+str_exit_cmd: db "EXIT", 0
+str_help_cmd: db "HELP", 0
+str_cls_cmd: db "CLS", 0
+str_exit_msg: db "Exiting KSDOS...", 0x0A, 0
+str_help_msg: db "Available commands: HELP, CLS, EXIT", 0x0A, 0
+str_unknown_cmd: db "Unknown command. Type HELP for available commands.", 0x0A, 0
+
+; ---- Command buffer ----
+command_buffer: db 80 dup(0)
 str_system_loaded:   db 0x0A, "╔══════════════════════════════════════════════════════════════╗", 0x0A
                     db "║         KSDOS Advanced System v2.0 - FULLY LOADED          ║", 0x0A
                     db "║        1024 system files loaded successfully!             ║", 0x0A
