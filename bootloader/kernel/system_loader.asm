@@ -127,10 +127,6 @@ system_load_complete:
     ; Display splash screen while loading
     call splash_show
     
-    ; Display loading header
-    mov si, system_structure
-    call vid_print
-    
     ; Initialize system memory layout
     call system_init_memory
     
@@ -181,9 +177,6 @@ system_init_memory:
     push ax
     push si
     
-    mov si, str_init_memory
-    call vid_print
-    
     ; Clear system memory area
     mov ax, SYSTEM_LOAD_ADDRESS >> 4
     mov es, ax
@@ -192,8 +185,9 @@ system_init_memory:
     xor ax, ax
     rep stosw
     
-    mov si, str_memory_ready
-    call vid_println
+    ; Update progress (10%)
+    mov si, splash_memory
+    call splash_update_progress
     
     pop si
     pop ax
@@ -206,12 +200,6 @@ system_load_critical:
     push ax
     push si
     push bx
-    
-    mov si, splash_loading
-    call splash_update_progress
-    
-    mov si, str_loading_critical
-    call vid_print
     
     mov si, critical_files
 .load_loop:
@@ -233,8 +221,9 @@ system_load_critical:
     jmp .load_loop
 
 .done:
-    mov si, str_critical_loaded
-    call vid_println
+    ; Update progress (25%)
+    mov si, splash_critical
+    call splash_update_progress
     
     pop bx
     pop si
@@ -248,9 +237,6 @@ system_load_system32:
     push ax
     push si
     push bx
-    
-    mov si, str_loading_system32
-    call vid_print
     
     mov si, system32_files
 .load_loop:
@@ -270,8 +256,9 @@ system_load_system32:
     jmp .load_loop
 
 .done:
-    mov si, str_system32_loaded
-    call vid_println
+    ; Update progress (40%)
+    mov si, splash_system32
+    call splash_update_progress
     
     pop bx
     pop si
@@ -285,12 +272,6 @@ system_load_drivers:
     push ax
     push si
     push bx
-    
-    mov si, splash_drivers
-    call splash_update_progress
-    
-    mov si, str_loading_drivers
-    call vid_print
     
     mov si, driver_files
 .load_loop:
@@ -310,8 +291,9 @@ system_load_drivers:
     jmp .load_loop
 
 .done:
-    mov si, str_drivers_loaded
-    call vid_println
+    ; Update progress (55%)
+    mov si, splash_drivers
+    call splash_update_progress
     
     pop bx
     pop si
@@ -325,9 +307,6 @@ system_load_applications:
     push ax
     push si
     push bx
-    
-    mov si, str_loading_apps
-    call vid_print
     
     mov si, application_files
 .load_loop:
@@ -347,8 +326,9 @@ system_load_applications:
     jmp .load_loop
 
 .done:
-    mov si, str_apps_loaded
-    call vid_println
+    ; Update progress (70%)
+    mov si, splash_apps
+    call splash_update_progress
     
     pop bx
     pop si
@@ -362,9 +342,6 @@ system_load_config:
     push ax
     push si
     push bx
-    
-    mov si, str_loading_config
-    call vid_print
     
     mov si, config_files
 .load_loop:
@@ -384,8 +361,9 @@ system_load_config:
     jmp .load_loop
 
 .done:
-    mov si, str_config_loaded
-    call vid_println
+    ; Update progress (85%)
+    mov si, splash_config
+    call splash_update_progress
     
     pop bx
     pop si
@@ -404,11 +382,7 @@ system_load_single_file:
     push si
     push di
     
-    ; Display filename being loaded
-    mov al, ' '
-    call vid_putchar
-    call vid_print
-    call vid_nl
+    ; Load file silently - no debug output
     
     ; REAL EXECUTION - Actually run the embedded assembly files
     ; We'll execute the actual code we wrote for each file
@@ -441,64 +415,32 @@ system_load_single_file:
     call strcmp_test
     jc .execute_win32k
     
-    ; Default: unknown file
-    mov si, str_unknown_file
-    call vid_println
+    ; Default: unknown file - skip silently
     jmp .done
     
 .execute_kernel:
-    mov si, str_loading_kernel
-    call vid_print
-    
-    ; ACTUALLY EXECUTE KERNEL CODE
+    ; Execute kernel code silently
     call execute_kernel_code
-    
-    mov si, str_kernel_loaded
-    call vid_println
     jmp .done
     
 .execute_command:
-    mov si, str_loading_command
-    call vid_print
-    
-    ; ACTUALLY EXECUTE COMMAND.COM CODE
+    ; Execute command code silently
     call execute_command_code
-    
-    mov si, str_command_loaded
-    call vid_println
     jmp .done
     
 .execute_hal:
-    mov si, str_loading_hal
-    call vid_print
-    
-    ; ACTUALLY EXECUTE HAL.DLL CODE
+    ; Execute HAL code silently
     call execute_hal_code
-    
-    mov si, str_hal_loaded
-    call vid_println
     jmp .done
     
 .execute_ntoskrnl:
-    mov si, str_loading_ntoskrnl
-    call vid_print
-    
-    ; ACTUALLY EXECUTE NTOSKRNL.EXE CODE
+    ; Execute NTOSKRNL code silently
     call execute_ntoskrnl_code
-    
-    mov si, str_ntoskrnl_loaded
-    call vid_println
     jmp .done
     
 .execute_win32k:
-    mov si, str_loading_win32k
-    call vid_print
-    
-    ; ACTUALLY EXECUTE WIN32K.SYS CODE
+    ; Execute WIN32K code silently
     call execute_win32k_code
-    
-    mov si, str_win32k_loaded
-    call vid_println
     jmp .done
 
 .done:
@@ -534,9 +476,8 @@ execute_kernel_code:
     ; Enable interrupts
     sti
     
-    ; Display kernel initialization
-    mov si, kernel_init_msg
-    call vid_print_string
+    ; Display kernel initialization silently
+    ; Remove debug output from kernel initialization
     
     ; Initialize memory management
     mov ax, 0x1000
@@ -574,9 +515,8 @@ execute_command_code:
     inc si
     loop .init_history
     
-    ; Display command interpreter ready
-    mov si, command_init_msg
-    call vid_print_string
+    ; Display command interpreter ready silently
+    ; Remove debug output from command initialization
     
     pop si
     pop ax
@@ -610,9 +550,8 @@ execute_hal_code:
     and al, 0xFD  ; Clear bit 1 (IRQ1)
     out 0x21, al
     
-    ; Display HAL initialization
-    mov si, hal_init_msg
-    call vid_print_string
+    ; Display HAL initialization silently
+    ; Remove debug output from HAL initialization
     
     pop dx
     pop ax
@@ -643,9 +582,8 @@ execute_ntoskrnl_code:
     mov word [current_thread], 1
     mov word [scheduler_active], 1
     
-    ; Display NT executive initialization
-    mov si, ntoskrnl_init_msg
-    call vid_print_string
+    ; Display NT executive initialization silently
+    ; Remove debug output from NTOSKRNL initialization
     
     pop si
     pop ax
@@ -681,9 +619,8 @@ execute_win32k_code:
     mov ax, 0xB800
     mov [video_segment], ax
     
-    ; Display graphics initialization
-    mov si, win32k_init_msg
-    call vid_print_string
+    ; Display graphics initialization silently
+    ; Remove debug output from WIN32K initialization
     
     pop cx
     pop bx
@@ -743,26 +680,15 @@ system_init_services:
     push ax
     push si
     
-    mov si, splash_services
-    call splash_update_progress
-    
-    mov si, str_init_services
-    call vid_print
-    
-    ; Simulate service initialization
+    ; Initialize system services silently
     mov cx, 10
 .service_loop:
-    mov al, '.'
-    call vid_putchar
     call system_short_delay
     loop .service_loop
     
-    call vid_nl
-    mov si, str_services_ready
-    call vid_println
-    
-    ; Mark splash screen as complete
-    call splash_complete
+    ; Update progress (90%)
+    mov si, splash_services
+    call splash_update_progress
     
     pop si
     pop ax
@@ -775,23 +701,15 @@ system_mount_filesystems:
     push ax
     push si
     
-    mov si, splash_filesys
-    call splash_update_progress
-    
-    mov si, str_mount_fs
-    call vid_print
-    
-    ; Simulate filesystem mounting
+    ; Mount filesystems silently
     mov cx, 5
 .mount_loop:
-    mov al, '█'
-    call vid_putchar
     call system_short_delay
     loop .mount_loop
     
-    call vid_nl
-    mov si, str_fs_ready
-    call vid_println
+    ; Update progress (95%)
+    mov si, splash_filesys
+    call splash_update_progress
     
     pop si
     pop ax
@@ -804,20 +722,11 @@ system_start_processes:
     push ax
     push si
     
-    mov si, str_start_processes
-    call vid_print
-    
-    ; Simulate process startup
+    ; Start processes silently
     mov cx, 8
 .process_loop:
-    mov al, '▪'
-    call vid_putchar
     call system_short_delay
     loop .process_loop
-    
-    call vid_nl
-    mov si, str_processes_ready
-    call vid_println
     
     pop si
     pop ax
@@ -832,22 +741,15 @@ system_start_command:
     push bx
     push di
     
-    mov si, str_starting_command
-    call vid_print
+    ; Mark splash screen as complete (100%)
+    call splash_complete
     
     ; Clear screen for command interface
-    call vid_clear_screen
+    call vid_clear
     
     ; Display command prompt header
     mov si, str_command_header
     call vid_println
-    
-    ; Simulate COMMAND.COM loading
-    mov si, str_loading_command
-    call vid_print
-    
-    ; Simulate initialization delay
-    call system_short_delay
     
     ; Display ready message
     mov si, str_command_ready
@@ -922,7 +824,7 @@ read_command_line:
     
 .done:
     mov byte [si], 0    ; Null terminate
-    call vid_newline
+    call vid_nl
     
     pop si
     pop ax
@@ -969,7 +871,7 @@ process_command:
     jmp .done
     
 .is_cls:
-    call vid_clear_screen
+    call vid_clear
     jmp .done
     
 .done:
@@ -1034,21 +936,6 @@ vid_print_string:
     ret
 
 ; ============================================================
-; vid_newline: Print newline
-; ============================================================
-vid_newline:
-    push ax
-    
-    mov ah, 0x0E
-    mov al, 0x0D
-    int 0x10
-    mov al, 0x0A
-    int 0x10
-    
-    pop ax
-    ret
-
-; ============================================================
 ; system_short_delay: Very short delay
 ; ============================================================
 system_short_delay:
@@ -1060,30 +947,23 @@ system_short_delay:
     ret
 
 ; ============================================================
-; vid_clear_screen: Clear the screen using BIOS
+; vid_print_string: Print string (helper function)
 ; ============================================================
-vid_clear_screen:
+vid_print_string:
     push ax
-    push bx
-    push cx
-    push dx
+    push si
     
-    ; Clear entire screen
-    mov ax, 0x0600
-    mov bh, 0x07
-    mov cx, 0x0000
-    mov dx, 0x184F
+.print_loop:
+    lodsb
+    cmp al, 0
+    je .done
+    
+    mov ah, 0x0E
     int 0x10
+    jmp .print_loop
     
-    ; Set cursor to (0,0)
-    mov ah, 0x02
-    mov bh, 0x00
-    mov dx, 0x0000
-    int 0x10
-    
-    pop dx
-    pop cx
-    pop bx
+.done:
+    pop si
     pop ax
     ret
 

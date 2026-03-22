@@ -20,17 +20,26 @@ splash_art:
     db "                    Loading System...", 0x0A, 0x0A, 0
 
 ; ---- Loading messages ----
-splash_loading: db ". Loading kernel modules...", 0x0D, 0
-splash_drivers: db ". Initializing device drivers...", 0x0D, 0
-splash_filesys: db ". Mounting file systems...", 0x0D, 0
-splash_services: db ". Starting system services...", 0x0D, 0
-splash_complete_msg: db ". System ready!", 0x0A, 0x0A, 0
+splash_memory:      db "Initializing system memory...", 0x0D, 0
+splash_critical:    db "Loading critical system files...", 0x0D, 0
+splash_system32:    db "Loading System32 components...", 0x0D, 0
+splash_drivers:     db "Installing device drivers...", 0x0D, 0
+splash_apps:        db "Loading applications...", 0x0D, 0
+splash_config:      db "Loading configuration files...", 0x0D, 0
+splash_services:    db "Starting system services...", 0x0D, 0
+splash_filesys:     db "Mounting file systems...", 0x0D, 0
+splash_complete_msg: db "System ready!", 0x0A, 0x0A, 0
 
 ; ---- Progress bar ----
 splash_progress_bar: db "[", 0
-splash_progress_fill: db "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||", 0
-splash_progress_empty: db "                                                                                                        ", 0
-splash_progress_end: db "]", 0
+splash_progress_fill: db "█", 0
+splash_progress_empty: db " ", 0
+splash_progress_end: db "] ", 0
+
+; Progress bar configuration
+PROGRESS_WIDTH      equ 50  ; Width of progress bar
+PROGRESS_CHAR_FULL   equ '█' ; Filled character
+PROGRESS_CHAR_EMPTY  equ ' '  ; Empty character
 
 ; ============================================================
 ; splash_show: Display the splash screen with loading animation
@@ -47,8 +56,11 @@ splash_show:
     mov si, splash_art
     call vid_print
     
-    ; Initialize progress counter
+    ; Initialize progress counter (0%)
     mov byte [splash_progress_count], 0
+    
+    ; Show initial progress bar
+    call splash_draw_progress_bar
     
     pop di
     pop si
@@ -69,51 +81,20 @@ splash_update_progress:
     push dx
     push si
     
+    ; Move cursor up to overwrite previous message
+    mov ah, 0x0E
+    mov al, 0x0D
+    int 0x10
+    
     ; Print the loading message
     call vid_print
     
-    ; Update progress counter
-    mov al, [splash_progress_count]
-    add al, 20  ; Each step adds 20% (5 steps total)
+    ; Update progress counter based on message type
+    call splash_get_progress_percentage
     mov [splash_progress_count], al
     
-    ; Print progress bar
-    mov si, splash_progress_bar
-    call vid_print
-    
-    ; Calculate filled portion (percentage)
-    mov cl, al
-    mov ch, 0
-    mov bl, 100
-    div bl          ; AL = percentage, AH = remainder
-    
-    ; Print filled portion based on percentage
-    mov cl, al       ; Use percentage as count
-    mov si, splash_progress_fill
-.print_fill:
-    test cl, cl
-    jz .print_empty
-    lodsb
-    call vid_putchar
-    dec cl
-    jmp .print_fill
-
-.print_empty:
-    ; Calculate remaining spaces
-    mov cl, 100
-    sub cl, al
-.print_empty_loop:
-    test cl, cl
-    jz .done
-    mov al, ' '
-    call vid_putchar
-    dec cl
-    jmp .print_empty_loop
-
-.done:
-    mov si, splash_progress_end
-    call vid_print
-    call vid_nl
+    ; Draw the progress bar
+    call splash_draw_progress_bar
     
     ; Small delay for visual effect
     call splash_delay
@@ -132,6 +113,16 @@ splash_complete:
     push ax
     push si
     
+    ; Set progress to 100%
+    mov byte [splash_progress_count], 100
+    
+    ; Draw final progress bar
+    call splash_draw_progress_bar
+    
+    ; Move to next line
+    call vid_nl
+    
+    ; Display completion message
     mov si, splash_complete_msg
     call vid_print
     
@@ -143,58 +134,195 @@ splash_complete:
     ret
 
 ; ============================================================
-; splash_print_progress: Print loading message with progress bar
+; splash_get_progress_percentage: Get progress based on message
 ; Input: SI = message string
+; Output: AL = percentage (0-100)
 ; ============================================================
-splash_print_progress:
+splash_get_progress_percentage:
+    push si
+    push di
+    
+    ; Check message type and return appropriate percentage
+    
+    ; Memory initialization - 10%
+    mov di, splash_memory
+    call strcmp_test
+    jc .memory_percent
+    
+    ; Critical files - 25%
+    mov di, splash_critical
+    call strcmp_test
+    jc .critical_percent
+    
+    ; System32 files - 40%
+    mov di, splash_system32
+    call strcmp_test
+    jc .system32_percent
+    
+    ; Drivers - 55%
+    mov di, splash_drivers
+    call strcmp_test
+    jc .drivers_percent
+    
+    ; Applications - 70%
+    mov di, splash_apps
+    call strcmp_test
+    jc .apps_percent
+    
+    ; Configuration - 85%
+    mov di, splash_config
+    call strcmp_test
+    jc .config_percent
+    
+    ; Services - 90%
+    mov di, splash_services
+    call strcmp_test
+    jc .services_percent
+    
+    ; File systems - 95%
+    mov di, splash_filesys
+    call strcmp_test
+    jc .filesystem_percent
+    
+    ; Default: 0%
+    xor ax, ax
+    jmp .done
+    
+.memory_percent:
+    mov al, 10
+    jmp .done
+    
+.critical_percent:
+    mov al, 25
+    jmp .done
+    
+.system32_percent:
+    mov al, 40
+    jmp .done
+    
+.drivers_percent:
+    mov al, 55
+    jmp .done
+    
+.apps_percent:
+    mov al, 70
+    jmp .done
+    
+.config_percent:
+    mov al, 85
+    jmp .done
+    
+.services_percent:
+    mov al, 90
+    jmp .done
+    
+.filesystem_percent:
+    mov al, 95
+    jmp .done
+    
+.done:
+    pop di
+    pop si
+    ret
+
+; ============================================================
+; splash_draw_progress_bar: Draw the progress bar
+; ============================================================
+splash_draw_progress_bar:
     push ax
     push bx
     push cx
     push dx
-    push si
     
-    ; Print the loading message
-    call vid_print
+    ; Print opening bracket
+    mov al, '['
+    call vid_putchar
     
-    ; Calculate progress position (simple increment)
+    ; Get current percentage
     mov al, [splash_progress_count]
-    inc al
-    mov [splash_progress_count], al
     
-    ; Print progress bar
-    mov si, splash_progress_bar
-    call vid_print
+    ; Calculate filled characters
+    mov ah, 0
+    mov bl, PROGRESS_WIDTH
+    mul bl          ; AX = percentage * width
+    mov bl, 100
+    div bl          ; AL = filled characters, AH = remainder
     
     ; Print filled portion
-    mov cl, al
-    mov ch, 0
-    mov si, splash_progress_fill
-.print_fill:
+    mov cl, al       ; Number of filled characters
+.filled_loop:
     test cl, cl
-    jz .print_empty
-    lodsb
+    jz .empty_loop
+    mov al, PROGRESS_CHAR_FULL
     call vid_putchar
     dec cl
-    jmp .print_fill
-
-.print_empty:
-    ; Calculate remaining spaces
-    mov cl, 100
+    jmp .filled_loop
+    
+.empty_loop:
+    ; Calculate remaining empty characters
+    mov cl, PROGRESS_WIDTH
     sub cl, [splash_progress_count]
-.print_empty_loop:
+    mov ah, 0
+    mov bl, PROGRESS_WIDTH
+    mul bl          ; AX = percentage * width
+    mov bl, 100
+    div bl          ; AL = filled characters
+    mov cl, PROGRESS_WIDTH
+    sub cl, al       ; CL = empty characters
+    
+.empty_print:
     test cl, cl
     jz .done
-    mov al, ' '
+    mov al, PROGRESS_CHAR_EMPTY
     call vid_putchar
     dec cl
-    jmp .print_empty_loop
-
-.done:
-    mov si, splash_progress_end
-    call vid_print
-    call vid_nl
+    jmp .empty_print
     
-    pop si
+.done:
+    ; Print closing bracket and percentage
+    mov al, ']'
+    call vid_putchar
+    
+    ; Print percentage
+    mov al, ' '
+    call vid_putchar
+    
+    mov al, [splash_progress_count]
+    call splash_print_number
+    
+    mov al, '%'
+    call vid_putchar
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================
+; splash_print_number: Print a number (0-100)
+; Input: AL = number
+; ============================================================
+splash_print_number:
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    ; Convert number to ASCII
+    mov ah, 0
+    mov bl, 10
+    div bl          ; AL = tens, AH = ones
+    
+    ; Print tens digit
+    add al, '0'
+    call vid_putchar
+    
+    ; Print ones digit
+    mov al, ah
+    add al, '0'
+    call vid_putchar
+    
     pop dx
     pop cx
     pop bx
@@ -207,9 +335,9 @@ splash_print_progress:
 splash_delay:
     push cx
     push dx
-    mov cx, 0x5000
+    mov cx, 0x3000
 .delay1:
-    mov dx, 0x5000
+    mov dx, 0x3000
 .delay2:
     dec dx
     jnz .delay2
@@ -220,14 +348,49 @@ splash_delay:
     ret
 
 ; ============================================================
+; strcmp_test: Compare two strings (from system_loader.asm)
+; Input: SI = string1, DI = string2
+; Output: JC = match, JNC = no match
+; ============================================================
+strcmp_test:
+    push ax
+    push si
+    push di
+    
+.compare_loop:
+    mov al, [si]
+    cmp al, [di]
+    jne .different
+    
+    cmp al, 0
+    je .equal
+    
+    inc si
+    inc di
+    jmp .compare_loop
+    
+.different:
+    clc                 ; Clear carry (no match)
+    jmp .done
+    
+.equal:
+    stc                 ; Set carry (match)
+    
+.done:
+    pop di
+    pop si
+    pop ax
+    ret
+
+; ============================================================
 ; splash_delay_long: Longer delay for dramatic effect
 ; ============================================================
 splash_delay_long:
     push cx
     push dx
-    mov cx, 0xA000
+    mov cx, 0x6000
 .delay1:
-    mov dx, 0xA000
+    mov dx, 0x6000
 .delay2:
     dec dx
     jnz .delay2
