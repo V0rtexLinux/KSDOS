@@ -38,6 +38,41 @@ msg_kernel_load   db "Loading KSDOS kernel...", 0x0D, 0
 msg_complete      db "System ready!", 0x0A, 0x0A, 0
 
 ; ============================================================
+; prints: Print string function (from boot sector)
+; Input: SI = pointer to string
+; ============================================================
+prints:
+    push ax
+    push si
+    
+.print_loop:
+    lodsb
+    cmp al, 0
+    je .done
+    
+    mov ah, 0x0E
+    int 0x10
+    jmp .print_loop
+    
+.done:
+    pop si
+    pop ax
+    ret
+
+; ============================================================
+; putc: Print character function (from boot sector)
+; Input: AL = character
+; ============================================================
+putc:
+    push ax
+    
+    mov ah, 0x0E
+    int 0x10
+    
+    pop ax
+    ret
+
+; ============================================================
 ; splash_init: Initialize splash screen
 ; ============================================================
 splash_init:
@@ -193,12 +228,3 @@ splash_complete:
     pop si
     pop ax
     ret
-
-; ============================================================
-; Include necessary BIOS functions
-; ============================================================
-%include "../boot/vgabios.asm"
-
-; External functions from boot sector
-extern prints
-extern putc

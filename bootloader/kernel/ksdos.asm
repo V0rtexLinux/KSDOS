@@ -92,7 +92,7 @@ kernel_entry:
     int 0x10
 
     ; Show splash screen
-    call splash_show
+    call splash_init
     
     ; Load complete system with real progress tracking
     call system_load_complete
@@ -169,42 +169,22 @@ system_load_complete:
     push si
     push dx
     
-    ; Initialize FAT filesystem (15%)
-    mov si, splash_memory
-    call splash_update_progress
-    call splash_delay
+    ; Initialize FAT filesystem (20%)
+    mov al, 1
+    call splash_update
     
-    ; Load critical system data (30%)
-    mov si, splash_critical
-    call splash_update_progress
+    ; Load critical system data (40%)
+    mov al, 2
+    call splash_update
     
-    ; Initialize disk system (45%)
+    ; Initialize disk system (60%)
     call disk_init
-    mov si, splash_system32
-    call splash_update_progress
-    call splash_delay
+    mov al, 3
+    call splash_update
     
-    ; Load driver systems (60%)
-    mov si, splash_drivers
-    call splash_update_progress
-    
-    ; Initialize system applications (75%)
-    mov si, splash_apps
-    call splash_update_progress
-    call splash_delay
-    
-    ; Load configuration (85%)
-    mov si, splash_config
-    call splash_update_progress
-    
-    ; Start system services (90%)
-    mov si, splash_services
-    call splash_update_progress
-    call splash_delay
-    
-    ; Mount file systems (95%)
-    mov si, splash_filesys
-    call splash_update_progress
+    ; Load driver systems (80%)
+    mov al, 4
+    call splash_update
     
     ; Complete loading
     call splash_complete
