@@ -1,0 +1,20 @@
+; =============================================================================
+; CALC.EXE - KSDOS Calculator
+; Calculator application for mathematical operations
+; =============================================================================
+
+org 0x1000
+
+; ---- CALC header ----
+db 'CALC', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd calc_start                  ; Entry point
+dd calc_end - calc_start        ; Size
+dd 0x00000000                  ; Reserved
+
+calc_start:
+    ; Calculator application initialization
+    ret
+
+calc_end:
+    db 'END', 0, 0, 0         ; End marker

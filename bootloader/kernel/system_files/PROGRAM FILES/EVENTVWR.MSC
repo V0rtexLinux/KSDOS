@@ -1,0 +1,20 @@
+; =============================================================================
+; EVENTVWR.MSC - KSDOS Event Viewer
+; System event log viewer and management tool
+; =============================================================================
+
+org 0x1000
+
+; ---- EVENTVWR header ----
+db 'EVNT', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd eventvwr_start              ; Entry point
+dd eventvwr_end - eventvwr_start  ; Size
+dd 0x00000000                  ; Reserved
+
+eventvwr_start:
+    ; Event Viewer initialization
+    ret
+
+eventvwr_end:
+    db 'END', 0, 0, 0         ; End marker

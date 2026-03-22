@@ -1,0 +1,20 @@
+; =============================================================================
+; DISK.SYS - Disk Driver
+; Manages hard disk and floppy disk operations for KSDOS
+; =============================================================================
+
+org 0x1000
+
+; ---- DISK driver header ----
+db 'DISK', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd disk_start                  ; Entry point
+dd disk_end - disk_start        ; Size
+dd 0x00000000                  ; Reserved
+
+disk_start:
+    ; Disk driver initialization
+    ret
+
+disk_end:
+    db 'END', 0, 0, 0         ; End marker

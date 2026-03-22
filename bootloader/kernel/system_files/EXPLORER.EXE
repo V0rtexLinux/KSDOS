@@ -1,0 +1,20 @@
+; =============================================================================
+; EXPLORER.EXE - Windows Explorer
+; Shell and file manager for KSDOS
+; =============================================================================
+
+org 0x1000
+
+; ---- EXPLORER header ----
+db 'EXPL', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd explorer_start              ; Entry point
+dd explorer_end - explorer_start  ; Size
+dd 0x00000000                  ; Reserved
+
+explorer_start:
+    ; Shell initialization
+    ret
+
+explorer_end:
+    db 'END', 0, 0, 0         ; End marker

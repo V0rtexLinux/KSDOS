@@ -1,0 +1,20 @@
+; =============================================================================
+; GDI32.DLL - Windows 32 Graphics Device Interface API
+; Graphics functions for drawing, fonts, colors, etc.
+; =============================================================================
+
+org 0x1000
+
+; ---- GDI32 header ----
+db 'GDI ', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd gdi32_start                 ; Entry point
+dd gdi32_end - gdi32_start      ; Size
+dd 0x00000000                  ; Reserved
+
+gdi32_start:
+    ; Graphics device interface initialization
+    ret
+
+gdi32_end:
+    db 'END', 0, 0, 0         ; End marker

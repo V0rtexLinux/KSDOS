@@ -1,0 +1,20 @@
+; =============================================================================
+; SHELL32.DLL - Windows Shell API
+; Shell functions for file operations, shortcuts, etc.
+; =============================================================================
+
+org 0x1000
+
+; ---- SHELL32 header ----
+db 'SHE ', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd shell32_start               ; Entry point
+dd shell32_end - shell32_start  ; Size
+dd 0x00000000                  ; Reserved
+
+shell32_start:
+    ; Shell API initialization
+    ret
+
+shell32_end:
+    db 'END', 0, 0, 0         ; End marker

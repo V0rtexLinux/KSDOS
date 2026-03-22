@@ -1,0 +1,20 @@
+; =============================================================================
+; OPENGL32.DLL - OpenGL API
+; 3D graphics rendering functions
+; =============================================================================
+
+org 0x1000
+
+; ---- OPENGL32 header ----
+db 'OPEN', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd opengl32_start              ; Entry point
+dd opengl32_end - opengl32_start  ; Size
+dd 0x00000000                  ; Reserved
+
+opengl32_start:
+    ; OpenGL initialization
+    ret
+
+opengl32_end:
+    db 'END', 0, 0, 0         ; End marker

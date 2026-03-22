@@ -1,0 +1,20 @@
+; =============================================================================
+; WS2_32.DLL - Windows Sockets 2 API
+; Network programming API for TCP/IP sockets
+; =============================================================================
+
+org 0x1000
+
+; ---- WS2_32 header ----
+db 'WS2 ', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd ws2_32_start                ; Entry point
+dd ws2_32_end - ws2_32_start    ; Size
+dd 0x00000000                  ; Reserved
+
+ws2_32_start:
+    ; Winsock initialization
+    ret
+
+ws2_32_end:
+    db 'END', 0, 0, 0         ; End marker

@@ -1,0 +1,67 @@
+; =============================================================================
+; SERVICES - KSDOS Network Services Configuration
+; Network service names and port mappings
+; =============================================================================
+
+# TCP services
+tcpmux           1/tcp          # TCP port service multiplexer
+echo             7/tcp          # Echo
+discard          9/tcp          # Discard
+systat          11/tcp          # Active users
+daytime         13/tcp          # Daytime
+qotd            17/tcp          # Quote of the day
+chargen         19/tcp          # Character generator
+ftp-data        20/tcp          # File Transfer [Default Data]
+ftp             21/tcp          # File Transfer [Control]
+ssh             22/tcp          # SSH Remote Login Protocol
+telnet          23/tcp          # Telnet
+smtp            25/tcp          # Simple Mail Transfer
+time            37/tcp          # Time
+rlp             39/tcp          # Resource Location Protocol
+nameserver      42/tcp          # Host Name Server
+whois           43/tcp          # whois
+domain          53/tcp          # Domain Name Server
+bootps          67/tcp          # Bootstrap Protocol Server
+bootpc          68/tcp          # Bootstrap Protocol Client
+tftp            69/tcp          # Trivial File Transfer
+gopher          70/tcp          # Gopher
+finger          79/tcp          # Finger
+http            80/tcp          # World Wide Web HTTP
+kerberos        88/tcp          # Kerberos
+hostnames      101/tcp          # Hostname Server
+iso-tsap       102/tcp          # ISO-TSAP Class 0
+acr-nema       104/tcp          # ACR-NEMA Digital Imag. & Comm. 300
+pop3           110/tcp          # Post Office Protocol - Version 3
+sunrpc         111/tcp          # SUN Remote Procedure Call
+auth           113/tcp          # Authentication Service
+sftp           115/tcp          # Simple File Transfer Protocol
+nntp           119/tcp          # Network News Transfer Protocol
+ntp            123/tcp          # Network Time Protocol
+imap           143/tcp          # Internet Message Access Protocol
+snmp           161/tcp          # Simple Network Management Protocol
+snmp-trap      162/tcp          # SNMP Trap
+irc            194/tcp          # Internet Relay Chat Protocol
+ldap           389/tcp          # Lightweight Directory Access Protocol
+https          443/tcp          # HTTP over TLS/SSL
+microsoft-ds   445/tcp          # Microsoft-DS
+kerberos-adm   749/tcp          # Kerberos Administration
+krb5_prop      754/tcp          # Kerberos v5
+klogin         543/tcp          # Kerberos Login
+kshell         544/tcp          # Kerberos Shell
+rsync          873/tcp          # Rsync
+ftps-data      989/tcp          # FTP over TLS/SSL (Data)
+ftps           990/tcp          # FTP over TLS/SSL (Control)
+imaps          993/tcp          # IMAP over TLS/SSL
+pop3s          995/tcp          # POP-3 over TLS/SSL
+mysql          3306/tcp         # MySQL
+rdp            3389/tcp         # Remote Desktop Protocol
+postgresql     5432/tcp         # PostgreSQL
+winrm          5985/tcp         # Windows Remote Management
+winrm-ssl      5986/tcp         # Windows Remote Management (HTTPS)
+
+# KSDOS specific services
+ksdos-shell    8000/tcp        # KSDOS Shell Service
+ksdos-registry 8001/tcp        # KSDOS Registry Service
+ksdos-auth     8002/tcp        # KSDOS Authentication Service
+ksdos-log      8003/tcp        # KSDOS Logging Service
+ksdos-update   8004/tcp        # KSDOS Update Service

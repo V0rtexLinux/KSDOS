@@ -1,0 +1,20 @@
+; =============================================================================
+; WIN32K.SYS - Windows 32 Kernel
+; Graphics and windowing system driver
+; =============================================================================
+
+org 0x1000
+
+; ---- WIN32K header ----
+db 'W32K', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd win32k_start                ; Entry point
+dd win32k_end - win32k_start    ; Size
+dd 0x00000000                  ; Reserved
+
+win32k_start:
+    ; Graphics subsystem initialization
+    ret
+
+win32k_end:
+    db 'END', 0, 0, 0         ; End marker

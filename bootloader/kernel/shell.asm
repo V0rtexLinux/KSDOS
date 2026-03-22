@@ -215,6 +215,7 @@ cmd_table:
     dw cmd_s_CSC,     sh_CSC
     dw cmd_s_MUSIC,   sh_MUSIC
     dw cmd_s_NET,     sh_NET
+    dw cmd_s_INSTALL, sh_INSTALL
     dw 0, 0             ; sentinel
 
 ; Command name strings (uppercase)
@@ -269,6 +270,7 @@ cmd_s_NASM2:    db "NASM",     0
 cmd_s_CSC:      db "CSC",      0
 cmd_s_MUSIC:    db "MUSIC",    0
 cmd_s_NET:      db "NET",      0
+cmd_s_INSTALL:  db "INSTALL",  0
 
 sh_dispatch:
     push ax
@@ -2252,6 +2254,25 @@ sh_NET:
     call ovl_load_run
     ret
 
+sh_INSTALL:
+    mov si, str_install_hdr
+    call vid_println
+    call install_with_retry
+    jc .install_error
+    call install_verify
+    jc .verify_error
+    mov si, str_install_success
+    call vid_println
+    ret
+.install_error:
+    mov si, str_install_error
+    call vid_println
+    ret
+.verify_error:
+    mov si, str_verify_error
+    call vid_println
+    ret
+
 ; ============================================================
 ; sh_banner: print startup banner
 ; ============================================================
@@ -2324,6 +2345,10 @@ str_diskcopy_ok:  db "Copy complete.", 0
 str_sys_hdr:     db "KSDOS System Transfer", 0
 str_sys_file:    db "Transferring KSDOS.SYS...", 0
 str_sys_ok:      db "System transferred successfully.", 0
+str_install_hdr: db "KSDOS Installation - USB to HD", 0
+str_install_success: db "KSDOS successfully installed to internal HD!", 0
+str_install_error:   db "Installation failed! Please check disk connections.", 0
+str_verify_error:    db "Installation verification failed!", 0
 
 ; Directory operation strings
 str_dir_tag:     db "<DIR>", 0

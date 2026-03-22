@@ -1,0 +1,20 @@
+; =============================================================================
+; MSINFO32.EXE - KSDOS System Information
+; System information and diagnostic tool
+; =============================================================================
+
+org 0x1000
+
+; ---- MSINFO32 header ----
+db 'MSIN', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd msinfo32_start              ; Entry point
+dd msinfo32_end - msinfo32_start  ; Size
+dd 0x00000000                  ; Reserved
+
+msinfo32_start:
+    ; System Information initialization
+    ret
+
+msinfo32_end:
+    db 'END', 0, 0, 0         ; End marker

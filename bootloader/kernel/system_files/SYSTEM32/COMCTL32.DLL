@@ -1,0 +1,20 @@
+; =============================================================================
+; COMCTL32.DLL - Common Controls Library
+; Common Windows controls like buttons, listviews, etc.
+; =============================================================================
+
+org 0x1000
+
+; ---- COMCTL32 header ----
+db 'COMC', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd comctl32_start              ; Entry point
+dd comctl32_end - comctl32_start  ; Size
+dd 0x00000000                  ; Reserved
+
+comctl32_start:
+    ; Common controls initialization
+    ret
+
+comctl32_end:
+    db 'END', 0, 0, 0         ; End marker

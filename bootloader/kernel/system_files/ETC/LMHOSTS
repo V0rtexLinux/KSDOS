@@ -1,0 +1,48 @@
+; =============================================================================
+; LMHOSTS - KSDOS NetBIOS Name Resolution
+; NetBIOS over TCP/IP name resolution file
+; =============================================================================
+
+# Copyright (c) 1993-1999 Microsoft Corp.
+#
+# This is a sample LMHOSTS file used by the Microsoft TCP/IP for Windows.
+#
+# This file contains the mappings of IP addresses to computer names
+# (NetBIOS names) or NetBIOS scope. Each entry should be kept on an
+# individual line. The IP address should be placed in the first column
+# followed by the corresponding computer name. The computer name
+# and NetBIOS scope should be separated by a backslash "\" as
+# in the following example:
+#
+#      102.54.94.97     production     # Production server
+#      102.54.94.98     sales          # Sales server
+#      102.54.94.99     backup         # Backup server
+#
+# Additionally, comments (such as these) may be inserted on individual
+# lines or following the computer name denoted by a '#' symbol.
+#
+# For example:
+#
+#      102.54.94.97     rhino.acme.com          # source server
+#      102.54.94.102    rhino.acme.com          # destination server
+#
+# The following example illustrates an additional use for LMHOSTS:
+#
+#      102.54.94.102     prod                 # Special name for PROD server
+#      102.54.94.123     sales                # Special name for SALES server
+#
+# By default, this file should be placed in the C:\WINDOWS directory.
+
+# KSDOS NetBIOS names
+127.0.0.1       KSDOS
+127.0.0.1       KERNEL
+127.0.0.1       SERVICES
+127.0.0.1       AUTH
+
+# Predefined entries for KSDOS development
+# 192.168.1.10    SERVER1
+# 192.168.1.11    WORKSTATION1
+# 192.168.1.12    WORKSTATION2
+
+# Include statement for centralized LMHOSTS file
+# INCLUDE \\SERVER\SHARE\LMHOSTS

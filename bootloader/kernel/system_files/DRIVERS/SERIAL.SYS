@@ -1,0 +1,20 @@
+; =============================================================================
+; SERIAL.SYS - Serial Port Driver
+; Manages COM ports and serial communication for KSDOS
+; =============================================================================
+
+org 0x1000
+
+; ---- SERIAL driver header ----
+db 'SERI', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd serial_start                ; Entry point
+dd serial_end - serial_start     ; Size
+dd 0x00000000                  ; Reserved
+
+serial_start:
+    ; Serial driver initialization
+    ret
+
+serial_end:
+    db 'END', 0, 0, 0         ; End marker

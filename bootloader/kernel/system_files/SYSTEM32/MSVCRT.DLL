@@ -1,0 +1,20 @@
+; =============================================================================
+; MSVCRT.DLL - Microsoft Visual C++ Runtime
+; C runtime library functions
+; =============================================================================
+
+org 0x1000
+
+; ---- MSVCRT header ----
+db 'MSVC', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd msvcrt_start                ; Entry point
+dd msvcrt_end - msvcrt_start    ; Size
+dd 0x00000000                  ; Reserved
+
+msvcrt_start:
+    ; C runtime initialization
+    ret
+
+msvcrt_end:
+    db 'END', 0, 0, 0         ; End marker

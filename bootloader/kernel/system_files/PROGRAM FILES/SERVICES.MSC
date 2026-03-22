@@ -1,0 +1,20 @@
+; =============================================================================
+; SERVICES.MSC - KSDOS Services Management
+; System services configuration and management console
+; =============================================================================
+
+org 0x1000
+
+; ---- SERVICES header ----
+db 'SRVC', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd services_start              ; Entry point
+dd services_end - services_start  ; Size
+dd 0x00000000                  ; Reserved
+
+services_start:
+    ; Services Management initialization
+    ret
+
+services_end:
+    db 'END', 0, 0, 0         ; End marker

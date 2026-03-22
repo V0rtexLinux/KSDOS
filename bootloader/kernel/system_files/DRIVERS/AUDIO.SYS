@@ -1,0 +1,20 @@
+; =============================================================================
+; AUDIO.SYS - Audio Driver
+; Manages audio playback and recording for KSDOS
+; =============================================================================
+
+org 0x1000
+
+; ---- AUDIO driver header ----
+db 'AUD ', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd audio_start                 ; Entry point
+dd audio_end - audio_start      ; Size
+dd 0x00000000                  ; Reserved
+
+audio_start:
+    ; Audio driver initialization
+    ret
+
+audio_end:
+    db 'END', 0, 0, 0         ; End marker

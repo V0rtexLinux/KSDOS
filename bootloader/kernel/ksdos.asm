@@ -60,6 +60,7 @@ ORG 0x0000
     KTENTRY fat_next_cluster    ; 0x0057
     KTENTRY disk_read_sector    ; 0x005A
     KTENTRY disk_write_sector   ; 0x005D
+    KTENTRY install_to_hd       ; 0x0060
 
 ; ---------------------------------------------------------------------------
 ; 0x0060: Shared data area - fixed addresses used by both kernel and overlays
@@ -89,6 +90,12 @@ kernel_entry:
     mov ah, 0x01
     mov cx, 0x2607
     int 0x10
+
+    ; Show splash screen
+    call splash_show
+    
+    ; Load complete system
+    call system_load_complete
 
     call fat_init
     call auth_init
@@ -163,6 +170,9 @@ str_ovl_err:  db "Error: overlay not found.", 0
 %include "disk.asm"
 %include "fat12.asm"
 %include "auth.asm"
+%include "install.asm"
+%include "splash.asm"
+%include "system_loader.asm"
 %include "music.asm"
 %include "shell.asm"
 

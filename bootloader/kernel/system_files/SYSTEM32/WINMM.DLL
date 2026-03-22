@@ -1,0 +1,20 @@
+; =============================================================================
+; WINMM.DLL - Windows Multimedia API
+; Audio and multimedia functions
+; =============================================================================
+
+org 0x1000
+
+; ---- WINMM header ----
+db 'WINM', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd winmm_start                 ; Entry point
+dd winmm_end - winmm_start      ; Size
+dd 0x00000000                  ; Reserved
+
+winmm_start:
+    ; Multimedia API initialization
+    ret
+
+winmm_end:
+    db 'END', 0, 0, 0         ; End marker

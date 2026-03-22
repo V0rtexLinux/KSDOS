@@ -1,0 +1,712 @@
+; =============================================================================
+; KEYBOARD.SYS - Keyboard Driver (16-bit Real Mode)
+; Manages keyboard input and key mapping for KSDOS
+; =============================================================================
+
+org 0x1000
+
+; ---- Keyboard driver header ----
+db 'KEYB', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dw keyboard_start              ; Entry point (16-bit offset)
+dw keyboard_end - keyboard_start  ; Size
+dd 0x00000000                  ; Reserved
+
+; ---- Keyboard constants ----
+KEYBOARD_DATA   equ 0x60        ; Keyboard data port
+KEYBOARD_STATUS equ 0x64        ; Keyboard status port
+KEYBOARD_CMD   equ 0x64        ; Keyboard command port
+
+; ---- Keyboard commands ----
+CMD_READ_LED    equ 0xED         ; Read/write LEDs
+CMD_SET_RATE    equ 0xF3         ; Set typematic rate
+CMD_ENABLE      equ 0xF4         ; Enable scanning
+CMD_DISABLE     equ 0xF5         ; Disable scanning
+CMD_RESET       equ 0xFF         ; Reset keyboard
+
+; ---- Status bits ----
+STATUS_OUTPUT_FULL equ 0x01      ; Output buffer full
+STATUS_INPUT_FULL  equ 0x02      ; Input buffer full
+STATUS_SYSTEM     equ 0x04      ; System flag
+STATUS_CMD_DATA   equ 0x08      ; Command/data flag
+
+; ---- Scan codes ----
+SCAN_ESCAPE     equ 0x01
+SCAN_1          equ 0x02
+SCAN_2          equ 0x03
+SCAN_3          equ 0x04
+SCAN_4          equ 0x05
+SCAN_5          equ 0x06
+SCAN_6          equ 0x07
+SCAN_7          equ 0x08
+SCAN_8          equ 0x09
+SCAN_9          equ 0x0A
+SCAN_0          equ 0x0B
+SCAN_MINUS      equ 0x0C
+SCAN_EQUALS     equ 0x0D
+SCAN_BACKSPACE  equ 0x0E
+SCAN_TAB        equ 0x0F
+SCAN_Q          equ 0x10
+SCAN_W          equ 0x11
+SCAN_E          equ 0x12
+SCAN_R          equ 0x13
+SCAN_T          equ 0x14
+SCAN_Y          equ 0x15
+SCAN_U          equ 0x16
+SCAN_I          equ 0x17
+SCAN_O          equ 0x18
+SCAN_P          equ 0x19
+SCAN_LBRACKET   equ 0x1A
+SCAN_RBRACKET   equ 0x1B
+SCAN_ENTER      equ 0x1C
+SCAN_LCTRL      equ 0x1D
+SCAN_A          equ 0x1E
+SCAN_S          equ 0x1F
+SCAN_D          equ 0x20
+SCAN_F          equ 0x21
+SCAN_G          equ 0x22
+SCAN_H          equ 0x23
+SCAN_J          equ 0x24
+SCAN_K          equ 0x25
+SCAN_L          equ 0x26
+SCAN_SEMICOLON  equ 0x27
+SCAN_APOSTROPHE equ 0x28
+SCAN_GRAVE      equ 0x29
+SCAN_LSHIFT     equ 0x2A
+SCAN_BACKSLASH  equ 0x2B
+SCAN_Z          equ 0x2C
+SCAN_X          equ 0x2D
+SCAN_C          equ 0x2E
+SCAN_V          equ 0x2F
+SCAN_B          equ 0x30
+SCAN_N          equ 0x31
+SCAN_M          equ 0x32
+SCAN_COMMA      equ 0x33
+SCAN_PERIOD     equ 0x34
+SCAN_SLASH      equ 0x35
+SCAN_RSHIFT     equ 0x36
+SCAN_MULTIPLY   equ 0x37
+SCAN_LALT       equ 0x38
+SCAN_SPACE      equ 0x39
+SCAN_CAPS       equ 0x3A
+SCAN_F1         equ 0x3B
+SCAN_F2         equ 0x3C
+SCAN_F3         equ 0x3D
+SCAN_F4         equ 0x3E
+SCAN_F5         equ 0x3F
+SCAN_F6         equ 0x40
+SCAN_F7         equ 0x41
+SCAN_F8         equ 0x42
+SCAN_F9         equ 0x43
+SCAN_F10        equ 0x44
+SCAN_NUMLOCK    equ 0x45
+SCAN_SCROLL     equ 0x46
+SCAN_HOME       equ 0x47
+SCAN_UP         equ 0x48
+SCAN_PGUP       equ 0x49
+SCAN_MINUS_PAD  equ 0x4A
+SCAN_LEFT       equ 0x4B
+SCAN_CENTER     equ 0x4C
+SCAN_RIGHT      equ 0x4D
+SCAN_PLUS_PAD   equ 0x4E
+SCAN_END        equ 0x4F
+SCAN_DOWN       equ 0x50
+SCAN_PGDN       equ 0x51
+SCAN_INS        equ 0x52
+SCAN_DEL        equ 0x53
+
+; ---- Driver data ----
+keyboard_buffer  dw 32 dup(0)    ; 32-key circular buffer
+buffer_head     dw 0
+buffer_tail     dw 0
+buffer_size     dw 32
+shift_state     dw 0              ; Shift state flags
+caps_lock       dw 0              ; Caps lock state
+num_lock        dw 0              ; Num lock state
+scroll_lock     dw 0              ; Scroll lock state
+last_scan       dw 0              ; Last scan code
+led_state       dw 0              ; LED state
+
+; ---- Shift state flags ----
+SHIFT_LSHIFT    equ 0x0001
+SHIFT_RSHIFT    equ 0x0002
+SHIFT_LCTRL     equ 0x0004
+SHIFT_RCTRL     equ 0x0008
+SHIFT_LALT      equ 0x0010
+SHIFT_RALT      equ 0x0020
+SHIFT_CAPS      equ 0x0040
+SHIFT_NUM       equ 0x0080
+SHIFT_SCROLL    equ 0x0100
+
+; ---- Driver function table ----
+driver_functions:
+    dw keyboard_init        ; Function 0: Initialize
+    dw keyboard_read_char   ; Function 1: Read character
+    dw keyboard_peek_char   ; Function 2: Peek at character
+    dw keyboard_flush       ; Function 3: Flush buffer
+    dw keyboard_set_leds    ; Function 4: Set LEDs
+    dw keyboard_get_shift   ; Function 5: Get shift state
+    dw keyboard_wait_key    ; Function 6: Wait for key
+
+keyboard_start:
+    ; Initialize keyboard driver
+    call keyboard_init
+    
+    ; Return success
+    xor ax, ax
+    ret
+
+; =============================================================================
+; keyboard_init: Initialize keyboard driver
+; =============================================================================
+keyboard_init:
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    ; Clear keyboard buffer
+    call keyboard_flush
+    
+    ; Reset shift states
+    mov [shift_state], 0
+    mov [caps_lock], 0
+    mov [num_lock], 0
+    mov [scroll_lock], 0
+    mov [led_state], 0
+    
+    ; Reset keyboard
+    mov al, CMD_RESET
+    call keyboard_send_command
+    
+    ; Wait for acknowledgment
+    call keyboard_wait_response
+    
+    ; Set typematic rate
+    mov al, CMD_SET_RATE
+    call keyboard_send_command
+    mov al, 0x00        ; Default rate
+    call keyboard_send_data
+    
+    ; Enable keyboard scanning
+    mov al, CMD_ENABLE
+    call keyboard_send_command
+    
+    ; Set initial LED state
+    call keyboard_update_leds
+    
+    ; Display initialization message
+    mov si, keyboard_init_msg
+    call keyboard_print_string
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; keyboard_read_char: Read character from keyboard buffer
+; Output: AL = ASCII character, AH = scan code
+; =============================================================================
+keyboard_read_char:
+    push bx
+    push si
+    
+.read_loop:
+    ; Check if buffer is empty
+    mov bx, [buffer_head]
+    cmp bx, [buffer_tail]
+    je .read_loop
+    
+    ; Get character from buffer
+    mov si, bx
+    mov ax, [keyboard_buffer + si]
+    
+    ; Update head pointer
+    inc bx
+    inc bx
+    cmp bx, [buffer_size]
+    jl .no_wrap
+    
+    xor bx, bx
+    
+.no_wrap:
+    mov [buffer_head], bx
+    
+    pop si
+    pop bx
+    ret
+
+; =============================================================================
+; keyboard_peek_char: Peek at character without removing
+; Output: AL = ASCII character, AH = scan code (or 0 if empty)
+; =============================================================================
+keyboard_peek_char:
+    push bx
+    push si
+    
+    ; Check if buffer is empty
+    mov bx, [buffer_head]
+    cmp bx, [buffer_tail]
+    jne .has_char
+    
+    ; Buffer empty
+    xor ax, ax
+    jmp .done
+    
+.has_char:
+    ; Get character without removing
+    mov si, bx
+    mov ax, [keyboard_buffer + si]
+    
+.done:
+    pop si
+    pop bx
+    ret
+
+; =============================================================================
+; keyboard_flush: Flush keyboard buffer
+; =============================================================================
+keyboard_flush:
+    push ax
+    
+    mov [buffer_head], 0
+    mov [buffer_tail], 0
+    
+    ; Clear hardware buffer
+.clear_loop:
+    in al, KEYBOARD_STATUS
+    test al, STATUS_OUTPUT_FULL
+    jz .done
+    
+    in al, KEYBOARD_DATA
+    jmp .clear_loop
+    
+.done:
+    pop ax
+    ret
+
+; =============================================================================
+; keyboard_set_leds: Set keyboard LEDs
+; Input: AL = LED state bits
+; =============================================================================
+keyboard_set_leds:
+    push ax
+    
+    mov [led_state], al
+    call keyboard_update_leds
+    
+    pop ax
+    ret
+
+; =============================================================================
+; keyboard_get_shift: Get current shift state
+; Output: AX = shift state flags
+; =============================================================================
+keyboard_get_shift:
+    mov ax, [shift_state]
+    ret
+
+; =============================================================================
+; keyboard_wait_key: Wait for key press
+; Output: AL = ASCII character, AH = scan code
+; =============================================================================
+keyboard_wait_key:
+    call keyboard_read_char
+    ret
+
+; =============================================================================
+; keyboard_interrupt_handler: Handle keyboard interrupt (IRQ 1)
+; =============================================================================
+keyboard_interrupt_handler:
+    push ax
+    push bx
+    push si
+    
+    ; Read scan code
+    in al, KEYBOARD_DATA
+    mov bl, al
+    
+    ; Check for key release (bit 7 set)
+    test al, 0x80
+    jnz .key_release
+    
+    ; Key press
+    call keyboard_process_key_press
+    jmp .done
+    
+.key_release:
+    ; Key release
+    and bl, 0x7F       ; Clear release bit
+    call keyboard_process_key_release
+    
+.done:
+    ; Send End of Interrupt
+    mov al, 0x20
+    out 0x20, al
+    
+    pop si
+    pop bx
+    pop ax
+    iret
+
+; =============================================================================
+; keyboard_process_key_press: Process key press
+; Input: BL = scan code
+; =============================================================================
+keyboard_process_key_press:
+    push ax
+    push bx
+    push si
+    
+    mov [last_scan], bx
+    
+    ; Check for modifier keys
+    cmp bl, SCAN_LSHIFT
+    je .set_lshift
+    cmp bl, SCAN_RSHIFT
+    je .set_rshift
+    cmp bl, SCAN_LCTRL
+    je .set_lctrl
+    cmp bl, SCAN_LALT
+    je .set_lalt
+    cmp bl, SCAN_CAPS
+    je .toggle_caps
+    cmp bl, SCAN_NUMLOCK
+    je .toggle_num
+    cmp bl, SCAN_SCROLL
+    je .toggle_scroll
+    
+    ; Convert scan code to ASCII
+    call keyboard_scan_to_ascii
+    
+    ; Check if valid character
+    cmp al, 0
+    je .done
+    
+    ; Add to buffer
+    call keyboard_add_to_buffer
+    
+    jmp .done
+    
+.set_lshift:
+    or word [shift_state], SHIFT_LSHIFT
+    jmp .done
+    
+.set_rshift:
+    or word [shift_state], SHIFT_RSHIFT
+    jmp .done
+    
+.set_lctrl:
+    or word [shift_state], SHIFT_LCTRL
+    jmp .done
+    
+.set_lalt:
+    or word [shift_state], SHIFT_LALT
+    jmp .done
+    
+.toggle_caps:
+    xor word [caps_lock], 1
+    call keyboard_update_leds
+    jmp .done
+    
+.toggle_num:
+    xor word [num_lock], 1
+    call keyboard_update_leds
+    jmp .done
+    
+.toggle_scroll:
+    xor word [scroll_lock], 1
+    call keyboard_update_leds
+    jmp .done
+    
+.done:
+    pop si
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; keyboard_process_key_release: Process key release
+; Input: BL = scan code
+; =============================================================================
+keyboard_process_key_release:
+    push bx
+    
+    cmp bl, SCAN_LSHIFT
+    je .clear_lshift
+    cmp bl, SCAN_RSHIFT
+    je .clear_rshift
+    cmp bl, SCAN_LCTRL
+    je .clear_lctrl
+    cmp bl, SCAN_LALT
+    je .clear_lalt
+    
+    jmp .done
+    
+.clear_lshift:
+    and word [shift_state], not SHIFT_LSHIFT
+    jmp .done
+    
+.clear_rshift:
+    and word [shift_state], not SHIFT_RSHIFT
+    jmp .done
+    
+.clear_lctrl:
+    and word [shift_state], not SHIFT_LCTRL
+    jmp .done
+    
+.clear_lalt:
+    and word [shift_state], not SHIFT_LALT
+    jmp .done
+    
+.done:
+    pop bx
+    ret
+
+; =============================================================================
+; keyboard_scan_to_ascii: Convert scan code to ASCII
+; Input: BL = scan code
+; Output: AL = ASCII character
+; =============================================================================
+keyboard_scan_to_ascii:
+    push bx
+    push si
+    
+    ; Check if shift is pressed
+    mov ax, [shift_state]
+    test ax, SHIFT_LSHIFT | SHIFT_RSHIFT
+    jnz .shifted
+    
+    ; Check if caps lock is on
+    test word [shift_state], SHIFT_CAPS
+    jnz .caps
+    
+    ; Normal lookup
+    mov si, scan_to_ascii_table
+    jmp .lookup
+    
+.shifted:
+    ; Shifted lookup
+    mov si, scan_to_ascii_shift_table
+    jmp .lookup
+    
+.caps:
+    ; Caps lock lookup
+    mov si, scan_to_ascii_caps_table
+    jmp .lookup
+    
+.lookup:
+    ; Get ASCII from table
+    mov bh, 0
+    mov al, [si + bx]
+    
+    pop si
+    pop bx
+    ret
+
+; =============================================================================
+; keyboard_add_to_buffer: Add character to buffer
+; Input: AX = character (AL = ASCII, AH = scan code)
+; =============================================================================
+keyboard_add_to_buffer:
+    push ax
+    push bx
+    push si
+    
+    ; Check if buffer is full
+    mov bx, [buffer_tail]
+    inc bx
+    inc bx
+    cmp bx, [buffer_size]
+    jl .no_wrap
+    
+    xor bx, bx
+    
+.no_wrap:
+    cmp bx, [buffer_head]
+    je .buffer_full
+    
+    ; Add character to buffer
+    mov [buffer_tail], bx
+    dec bx
+    dec bx
+    mov si, bx
+    mov [keyboard_buffer + si], ax
+    
+.buffer_full:
+    pop si
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; keyboard_update_leds: Update keyboard LEDs
+; =============================================================================
+keyboard_update_leds:
+    push ax
+    
+    ; Build LED state
+    mov al, 0
+    test word [caps_lock], 1
+    jz .no_caps
+    or al, 0x04
+    
+.no_caps:
+    test word [num_lock], 1
+    jz .no_num
+    or al, 0x02
+    
+.no_num:
+    test word [scroll_lock], 1
+    jz .no_scroll
+    or al, 0x01
+    
+.no_scroll:
+    mov [led_state], al
+    
+    ; Send LED command
+    mov al, CMD_READ_LED
+    call keyboard_send_command
+    mov al, [led_state]
+    call keyboard_send_data
+    
+    pop ax
+    ret
+
+; =============================================================================
+; keyboard_send_command: Send command to keyboard
+; Input: AL = command
+; =============================================================================
+keyboard_send_command:
+    push ax
+    push cx
+    
+    ; Wait for input buffer to be empty
+    mov cx, 0xFFFF
+.wait_loop:
+    in al, KEYBOARD_STATUS
+    test al, STATUS_INPUT_FULL
+    jz .ready
+    
+    loop .wait_loop
+    
+.ready:
+    ; Send command
+    mov al, al  ; AL already has command
+    out KEYBOARD_CMD, al
+    
+    pop cx
+    pop ax
+    ret
+
+; =============================================================================
+; keyboard_send_data: Send data to keyboard
+; Input: AL = data
+; =============================================================================
+keyboard_send_data:
+    push ax
+    push cx
+    
+    ; Wait for input buffer to be empty
+    mov cx, 0xFFFF
+.wait_loop:
+    in al, KEYBOARD_STATUS
+    test al, STATUS_INPUT_FULL
+    jz .ready
+    
+    loop .wait_loop
+    
+.ready:
+    ; Send data
+    out KEYBOARD_DATA, al
+    
+    pop cx
+    pop ax
+    ret
+
+; =============================================================================
+; keyboard_wait_response: Wait for keyboard response
+; Output: AL = response byte
+; =============================================================================
+keyboard_wait_response:
+    push cx
+    
+    mov cx, 0xFFFF
+.wait_loop:
+    in al, KEYBOARD_STATUS
+    test al, STATUS_OUTPUT_FULL
+    jnz .has_data
+    
+    loop .wait_loop
+    
+.has_data:
+    in al, KEYBOARD_DATA
+    
+    pop cx
+    ret
+
+; =============================================================================
+; keyboard_print_string: Print string using BIOS (for debugging)
+; Input: SI = pointer to string
+; =============================================================================
+keyboard_print_string:
+    push ax
+    push si
+    
+.print_loop:
+    lodsb
+    cmp al, 0
+    je .done
+    
+    mov ah, 0x0E
+    int 0x10
+    jmp .print_loop
+    
+.done:
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; Scan code to ASCII conversion tables
+; =============================================================================
+
+scan_to_ascii_table:
+    db 0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0, 0
+    db 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 0x0D, 0
+    db 0, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', "'", '`', 0, 0
+    db '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0, '*', 0, 0
+    db 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, '-', 0, 0, 0, '+', 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+scan_to_ascii_shift_table:
+    db 0, 0, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 0, 0
+    db 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 0x0D, 0
+    db 0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~', 0, 0
+    db '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0, '*', 0, 0
+    db 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, '-', 0, 0, 0, '+', 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+scan_to_ascii_caps_table:
+    db 0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0, 0
+    db 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', 0x0D, 0
+    db 0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', "'", '`', 0, 0
+    db '\\', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '/', 0, '*', 0, 0
+    db 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, '-', 0, 0, 0, '+', 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; =============================================================================
+; Messages
+; =============================================================================
+keyboard_init_msg  db 'Keyboard driver initialized', 0x0D, 0x0A, 0
+
+keyboard_end:
+    db 'END', 0, 0, 0         ; End marker

@@ -1,0 +1,20 @@
+; =============================================================================
+; DDRAW.DLL - DirectDraw API
+; 2D graphics and video memory management
+; =============================================================================
+
+org 0x1000
+
+; ---- DDRAW header ----
+db 'DDRA', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd ddraw_start                 ; Entry point
+dd ddraw_end - ddraw_start      ; Size
+dd 0x00000000                  ; Reserved
+
+ddraw_start:
+    ; DirectDraw initialization
+    ret
+
+ddraw_end:
+    db 'END', 0, 0, 0         ; End marker

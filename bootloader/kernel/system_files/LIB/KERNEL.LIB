@@ -1,0 +1,20 @@
+; =============================================================================
+; KERNEL.LIB - KSDOS Kernel Library
+; Kernel API functions for system programming
+; =============================================================================
+
+org 0x1000
+
+; ---- KERNEL.LIB header ----
+db 'KRNL', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd kernel_lib_start            ; Entry point
+dd kernel_lib_end - kernel_lib_start  ; Size
+dd 0x00000000                  ; Reserved
+
+kernel_lib_start:
+    ; Kernel library initialization
+    ret
+
+kernel_lib_end:
+    db 'END', 0, 0, 0         ; End marker

@@ -1,0 +1,291 @@
+; =============================================================================
+; KERNEL.SYS - KSDOS Core Kernel (16-bit Real Mode)
+; Main operating system kernel for KSDOS v2.0
+; =============================================================================
+
+org 0x1000
+
+; ---- Kernel header ----
+db 'KSDOS', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dw kernel_start                ; Entry point (16-bit offset)
+dw kernel_end - kernel_start  ; Kernel size
+dd 0x00000000                  ; Reserved
+
+; ---- Kernel data structures ----
+kernel_data_segment   equ 0x2000
+kernel_stack_segment   equ 0x3000
+kernel_stack_pointer  equ 0xFFF0
+
+; ---- Interrupt vectors ----
+int_20_handler    dw 0
+int_21_handler    dw 0
+int_10_handler    dw 0
+
+; ---- System variables ----
+current_task      dw 0
+memory_map        dw 0
+file_system       dw 0
+device_list       dw 0
+
+kernel_start:
+    ; Save original DS
+    push ds
+    
+    ; Set up kernel data segment
+    mov ax, kernel_data_segment
+    mov ds, ax
+    
+    ; Initialize kernel stack
+    mov ax, kernel_stack_segment
+    mov ss, ax
+    mov sp, kernel_stack_pointer
+    
+    ; Clear screen and display kernel message
+    call clear_screen
+    mov si, kernel_msg
+    call print_string
+    
+    ; Initialize interrupt handlers
+    call init_interrupts
+    
+    ; Initialize memory management
+    call init_memory
+    
+    ; Initialize file system
+    call init_filesystem
+    
+    ; Initialize device drivers
+    call init_devices
+    
+    ; Display kernel ready message
+    mov si, kernel_ready_msg
+    call print_string
+    
+    ; Enter kernel main loop
+    call kernel_main_loop
+    
+    ; Restore original DS (should never reach here)
+    pop ds
+    ret
+
+; =============================================================================
+; clear_screen: Clear the screen using BIOS interrupt 10h
+; =============================================================================
+clear_screen:
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    mov ax, 0x0600      ; Scroll entire screen
+    mov bh, 0x07        ; Normal attributes (white on black)
+    mov cx, 0x0000      ; Upper left corner
+    mov dx, 0x184F      ; Lower right corner (24, 79)
+    int 0x10            ; BIOS video interrupt
+    
+    ; Set cursor position to (0,0)
+    mov ah, 0x02
+    mov bh, 0x00        ; Page 0
+    mov dx, 0x0000      ; Row 0, Column 0
+    int 0x10
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; print_string: Print a null-terminated string
+; Input: SI = pointer to string
+; =============================================================================
+print_string:
+    push ax
+    push si
+    
+.print_loop:
+    lodsb               ; Load byte from [SI] into AL
+    cmp al, 0           ; Check for null terminator
+    je .done
+    
+    mov ah, 0x0E        ; BIOS teletype output
+    int 0x10            ; Print character
+    
+    jmp .print_loop
+    
+.done:
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; init_interrupts: Initialize system interrupt handlers
+; =============================================================================
+init_interrupts:
+    push ax
+    push es
+    
+    ; Get interrupt vector table base
+    xor ax, ax
+    mov es, ax
+    
+    ; Set INT 20h handler (DOS terminate)
+    mov word [es:0x80], int_20_handler
+    mov word [es:0x82], kernel_data_segment
+    
+    ; Set INT 21h handler (DOS functions)
+    mov word [es:0x84], int_21_handler
+    mov word [es:0x86], kernel_data_segment
+    
+    ; Set INT 10h handler (video functions)
+    mov word [es:0x40], int_10_handler
+    mov word [es:0x42], kernel_data_segment
+    
+    pop es
+    pop ax
+    ret
+
+; =============================================================================
+; init_memory: Initialize memory management
+; =============================================================================
+init_memory:
+    push ax
+    push si
+    
+    mov si, memory_init_msg
+    call print_string
+    
+    ; Simple memory map initialization
+    mov [memory_map], ax
+    
+    mov si, memory_ok_msg
+    call print_string
+    
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; init_filesystem: Initialize file system
+; =============================================================================
+init_filesystem:
+    push ax
+    push si
+    
+    mov si, fs_init_msg
+    call print_string
+    
+    ; Initialize file system structures
+    mov [file_system], ax
+    
+    mov si, fs_ok_msg
+    call print_string
+    
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; init_devices: Initialize device drivers
+; =============================================================================
+init_devices:
+    push ax
+    push si
+    
+    mov si, device_init_msg
+    call print_string
+    
+    ; Initialize device list
+    mov [device_list], ax
+    
+    mov si, device_ok_msg
+    call print_string
+    
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; kernel_main_loop: Main kernel execution loop
+; =============================================================================
+kernel_main_loop:
+    ; Check for pending interrupts
+    hlt
+    
+    ; Process system tasks
+    call process_tasks
+    
+    ; Check for user input
+    call check_input
+    
+    jmp kernel_main_loop
+
+; =============================================================================
+; process_tasks: Process system tasks
+; =============================================================================
+process_tasks:
+    push ax
+    
+    ; Simple task switching
+    mov ax, [current_task]
+    inc ax
+    and ax, 0x0003      ; Simple round-robin (4 tasks)
+    mov [current_task], ax
+    
+    pop ax
+    ret
+
+; =============================================================================
+; check_input: Check for keyboard input
+; =============================================================================
+check_input:
+    push ax
+    
+    ; Check if key is available
+    mov ah, 0x01
+    int 0x16
+    jz .no_input
+    
+    ; Read the key
+    mov ah, 0x00
+    int 0x16
+    
+    ; Process the key (simple echo for now)
+    mov ah, 0x0E
+    int 0x10
+    
+.no_input:
+    pop ax
+    ret
+
+; =============================================================================
+; Interrupt handlers
+; =============================================================================
+
+int_20_handler:
+    ; DOS terminate handler
+    iret
+
+int_21_handler:
+    ; DOS functions handler
+    iret
+
+int_10_handler:
+    ; Video functions handler
+    iret
+
+; =============================================================================
+; Kernel messages
+; =============================================================================
+kernel_msg        db 'KSDOS Kernel v2.0 - 16-bit Real Mode', 0x0D, 0x0A, 0
+kernel_ready_msg  db 'Kernel initialization complete.', 0x0D, 0x0A, 0
+memory_init_msg   db 'Initializing memory management...', 0x0D, 0x0A, 0
+memory_ok_msg     db 'Memory management ready.', 0x0D, 0x0A, 0
+fs_init_msg       db 'Initializing file system...', 0x0D, 0x0A, 0
+fs_ok_msg         db 'File system ready.', 0x0D, 0x0A, 0
+device_init_msg   db 'Initializing device drivers...', 0x0D, 0x0A, 0
+device_ok_msg     db 'Device drivers ready.', 0x0D, 0x0A, 0
+
+kernel_end:
+    db 'END', 0, 0, 0         ; End marker

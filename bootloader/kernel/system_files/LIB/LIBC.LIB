@@ -1,0 +1,20 @@
+; =============================================================================
+; LIBC.LIB - KSDOS C Standard Library
+; Standard C library functions for KSDOS development
+; =============================================================================
+
+org 0x1000
+
+; ---- LIBC header ----
+db 'LIBC', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd libc_start                  ; Entry point
+dd libc_end - libc_start        ; Size
+dd 0x00000000                  ; Reserved
+
+libc_start:
+    ; C library initialization
+    ret
+
+libc_end:
+    db 'END', 0, 0, 0         ; End marker

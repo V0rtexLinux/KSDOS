@@ -1,0 +1,20 @@
+; =============================================================================
+; OLE32.DLL - Object Linking and Embedding
+; OLE/COM support for component object model
+; =============================================================================
+
+org 0x1000
+
+; ---- OLE32 header ----
+db 'OLE ', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd ole32_start                 ; Entry point
+dd ole32_end - ole32_start      ; Size
+dd 0x00000000                  ; Reserved
+
+ole32_start:
+    ; OLE/COM initialization
+    ret
+
+ole32_end:
+    db 'END', 0, 0, 0         ; End marker

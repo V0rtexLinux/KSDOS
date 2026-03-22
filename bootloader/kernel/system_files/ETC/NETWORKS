@@ -1,0 +1,27 @@
+; =============================================================================
+; NETWORKS - KSDOS Network Configuration
+; Network names and address mappings
+; =============================================================================
+
+# Local networks
+loopback         127.0.0.0
+link-local       169.254.0.0
+
+# Private networks (RFC 1918)
+class-a          10.0.0.0
+class-b          172.16.0.0
+class-c          192.168.0.0
+
+# KSDOS specific networks
+ksdos-local      192.168.100.0
+ksdos-dev        192.168.200.0
+ksdos-test       192.168.250.0
+
+# Special networks
+zeroconf         224.0.0.0
+multicast        224.0.0.0
+broadcast        255.255.255.255
+
+# Documentation networks
+test-net         192.0.2.0
+benchmark        198.18.0.0

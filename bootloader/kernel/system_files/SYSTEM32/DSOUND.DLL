@@ -1,0 +1,20 @@
+; =============================================================================
+; DSOUND.DLL - DirectSound API
+; Audio playback and recording functions
+; =============================================================================
+
+org 0x1000
+
+; ---- DSOUND header ----
+db 'DSOU', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd dsound_start                ; Entry point
+dd dsound_end - dsound_start    ; Size
+dd 0x00000000                  ; Reserved
+
+dsound_start:
+    ; DirectSound initialization
+    ret
+
+dsound_end:
+    db 'END', 0, 0, 0         ; End marker

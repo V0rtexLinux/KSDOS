@@ -1,0 +1,20 @@
+; =============================================================================
+; CMD.EXE - KSDOS Command Prompt
+; Command line interpreter for KSDOS
+; =============================================================================
+
+org 0x1000
+
+; ---- CMD header ----
+db 'CMD ', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd cmd_start                   ; Entry point
+dd cmd_end - cmd_start          ; Size
+dd 0x00000000                  ; Reserved
+
+cmd_start:
+    ; Command prompt initialization
+    ret
+
+cmd_end:
+    db 'END', 0, 0, 0         ; End marker

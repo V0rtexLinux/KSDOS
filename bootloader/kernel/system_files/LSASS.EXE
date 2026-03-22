@@ -1,0 +1,20 @@
+; =============================================================================
+; LSASS.EXE - Local Security Authority Subsystem Service
+; Security policy enforcement and authentication
+; =============================================================================
+
+org 0x1000
+
+; ---- LSASS header ----
+db 'LSAS', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd lsass_start                 ; Entry point
+dd lsass_end - lsass_start      ; Size
+dd 0x00000000                  ; Reserved
+
+lsass_start:
+    ; Security subsystem initialization
+    ret
+
+lsass_end:
+    db 'END', 0, 0, 0         ; End marker

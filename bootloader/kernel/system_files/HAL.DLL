@@ -1,0 +1,20 @@
+; =============================================================================
+; HAL.DLL - Hardware Abstraction Layer
+; Provides low-level hardware interface for KSDOS
+; =============================================================================
+
+org 0x1000
+
+; ---- HAL header ----
+db 'HAL ', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd hal_start                   ; Entry point
+dd hal_end - hal_start         ; HAL size
+dd 0x00000000                  ; Reserved
+
+hal_start:
+    ; Hardware abstraction functions
+    ret
+
+hal_end:
+    db 'END', 0, 0, 0         ; End marker

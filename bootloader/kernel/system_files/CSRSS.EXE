@@ -1,0 +1,20 @@
+; =============================================================================
+; CSRSS.EXE - Client/Server Runtime Subsystem
+; Windows subsystem process
+; =============================================================================
+
+org 0x1000
+
+; ---- CSRSS header ----
+db 'CSRS', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd csrss_start                 ; Entry point
+dd csrss_end - csrss_start      ; Size
+dd 0x00000000                  ; Reserved
+
+csrss_start:
+    ; Client/Server subsystem initialization
+    ret
+
+csrss_end:
+    db 'END', 0, 0, 0         ; End marker

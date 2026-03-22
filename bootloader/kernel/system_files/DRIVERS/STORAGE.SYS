@@ -1,0 +1,20 @@
+; =============================================================================
+; STORAGE.SYS - Storage Driver
+; Manages disk drives and storage devices for KSDOS
+; =============================================================================
+
+org 0x1000
+
+; ---- STORAGE driver header ----
+db 'STOR', 0, 0, 0           ; Signature
+dw 0x0200                     ; Version 2.0
+dd storage_start               ; Entry point
+dd storage_end - storage_start  ; Size
+dd 0x00000000                  ; Reserved
+
+storage_start:
+    ; Storage driver initialization
+    ret
+
+storage_end:
+    db 'END', 0, 0, 0         ; End marker
