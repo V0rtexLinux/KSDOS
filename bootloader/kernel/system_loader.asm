@@ -421,11 +421,17 @@ system_load_single_file:
     call vid_nl
     
     ; REAL FILE LOADING - Read from disk using BIOS
+    ; Reset disk system first
+    mov ax, 0x0000        ; Reset disk system
+    mov dx, 0x0000        ; Drive 0 (A: floppy)
+    int 0x13
+    jc .read_error
+    
     ; Try to read file as if it's on floppy disk
     mov ax, 0x0201        ; Read 1 sector
     mov bx, [system_load_ptr]  ; Load address
     mov cx, 0x0001        ; Cylinder 0, Sector 1
-    mov dx, 0x0080        ; Head 0, Drive 0 (C:)
+    mov dx, 0x0000        ; Head 0, Drive 0 (A: floppy)
     int 0x13
     
     jc .read_error
@@ -600,11 +606,17 @@ system_start_command:
     mov si, str_loading_from_disk
     call vid_print
     
+    ; Reset disk system first
+    mov ax, 0x0000        ; Reset disk system
+    mov dx, 0x0000        ; Drive 0 (A: floppy)
+    int 0x13
+    jc .load_error
+    
     ; Load COMMAND.COM from disk using BIOS
     mov ax, 0x0201        ; Read 1 sector
     mov bx, 0x2000        ; Load at 0x2000
     mov cx, 0x0001        ; Cylinder 0, Sector 1
-    mov dx, 0x0080        ; Head 0, Drive 0
+    mov dx, 0x0000        ; Head 0, Drive 0 (A: floppy)
     int 0x13
     jc .load_error
     
@@ -914,7 +926,7 @@ str_unknown_cmd: db "Unknown command. Type HELP for available commands.", 0x0A, 
 ; ---- Command buffer ----
 command_buffer: db 80 dup(0)
 str_system_loaded:   db 0x0A, "╔══════════════════════════════════════════════════════════════╗", 0x0A
-                    db "║         KSDOS Advanced System v2.0 - FULLY LOADED          ║", 0x0A
+                    db "║         KSDOS v2.0 - FULLY LOADED          ║", 0x0A
                     db "║        1024 system files loaded successfully!             ║", 0x0A
                     db "║           System ready for user interaction              ║", 0x0A
                     db "╚══════════════════════════════════════════════════════════════╝", 0x0A, 0
