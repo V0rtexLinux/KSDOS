@@ -81,11 +81,6 @@ splash_update_progress:
     push dx
     push si
     
-    ; Move cursor up to overwrite previous message
-    mov ah, 0x0E
-    mov al, 0x0D
-    int 0x10
-    
     ; Print the loading message
     call vid_print
     
@@ -261,14 +256,7 @@ splash_draw_progress_bar:
 .empty_loop:
     ; Calculate remaining empty characters
     mov cl, PROGRESS_WIDTH
-    sub cl, [splash_progress_count]
-    mov ah, 0
-    mov bl, PROGRESS_WIDTH
-    mul bl          ; AX = percentage * width
-    mov bl, 100
-    div bl          ; AL = filled characters
-    mov cl, PROGRESS_WIDTH
-    sub cl, al       ; CL = empty characters
+    sub cl, al       ; CL = empty characters (width - filled chars)
     
 .empty_print:
     test cl, cl
