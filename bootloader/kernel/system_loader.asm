@@ -1160,6 +1160,7 @@ current_process: dw 0
 current_thread: dw 0
 scheduler_active: dw 0
 video_segment: dw 0
+active_window: dw 0
 process_table: dw 32 dup(0)
 window_table: dw 16 dup(0)
 command_history: dw 800 dup(0)  ; 10 commands * 80 chars
