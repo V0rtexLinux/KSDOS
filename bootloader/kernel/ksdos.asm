@@ -1,14 +1,7 @@
 ; =============================================================================
-; ksdos.asm - KSDOS Kernel Entry Point
+; ksdos.asm - KSDOS GUI Kernel Entry Point
 ; 16-bit real mode x86, loaded at 0x1000:0x0000 by boot sector
-;
-; Memory layout of this binary (ORG 0x0000):
-;   0x0000          3 bytes  initial JMP to kernel_entry
-;   0x0003-0x005F  93 bytes  kernel jump table  (31 entries × 3 bytes)
-;   0x0060-0x00DF 128 bytes  sh_arg   - shared command-argument buffer
-;   0x00E0-0x00EB  12 bytes  _sh_tmp11 - shared DOS 8.3 temp buffer
-;   0x00EC-0x00ED   2 bytes  _sh_type_sz - shared source-file-size word
-;   0x00EE+               kernel_entry and all subsystem code
+; Amiga-style graphical interface
 ; =============================================================================
 
 BITS 16
@@ -20,34 +13,29 @@ ORG 0x0000
     jmp near kernel_entry
 
 ; ---------------------------------------------------------------------------
-; 0x0003: Kernel jump table - 31 entries, 3 bytes each (E9 near jmp)
-; These stable offsets let overlay binaries call kernel routines regardless
-; of where those routines land in the kernel binary.
+; 0x0003: Kernel jump table - GUI entries
 ; ---------------------------------------------------------------------------
 %macro KTENTRY 1
     db 0xE9
     dw (%1) - ($ + 2)
 %endmacro
 
-    KTENTRY vid_print           ; 0x0003
-    KTENTRY vid_println         ; 0x0006
-    KTENTRY vid_putchar         ; 0x0009
-    KTENTRY vid_nl              ; 0x000C
-    KTENTRY vid_clear           ; 0x000F
-    KTENTRY vid_set_attr        ; 0x0012
-    KTENTRY vid_get_cursor      ; 0x0015
-    KTENTRY vid_set_cursor      ; 0x0018
-    KTENTRY kbd_getkey          ; 0x001B
-    KTENTRY kbd_check           ; 0x001E
-    KTENTRY kbd_readline        ; 0x0021
-    KTENTRY str_len             ; 0x0024
-    KTENTRY str_copy            ; 0x0027
-    KTENTRY str_cmp             ; 0x002A
-    KTENTRY str_ltrim           ; 0x002D
-    KTENTRY str_to_dosname      ; 0x0030
-    KTENTRY _uc_al              ; 0x0033
-    KTENTRY print_hex_byte      ; 0x0036
-    KTENTRY print_word_dec      ; 0x0039
+    KTENTRY video_gui_init       ; 0x0003
+    KTENTRY video_set_color      ; 0x0006
+    KTENTRY video_draw_pixel     ; 0x0009
+    KTENTRY video_draw_line      ; 0x000C
+    KTENTRY video_draw_rect      ; 0x000F
+    KTENTRY video_fill_rect      ; 0x0012
+    KTENTRY video_draw_desktop  ; 0x0015
+    KTENTRY video_draw_mouse     ; 0x0018
+    KTENTRY mouse_init          ; 0x001B
+    KTENTRY mouse_read          ; 0x001E
+    KTENTRY mouse_get_position   ; 0x0021
+    KTENTRY window_create        ; 0x0024
+    KTENTRY window_close         ; 0x0027
+    KTENTRY window_draw         ; 0x002A
+    KTENTRY window_handle_mouse  ; 0x002D
+    KTENTRY gui_main_loop       ; 0x0030
     KTENTRY fat_find            ; 0x003C
     KTENTRY fat_read_file       ; 0x003F
     KTENTRY fat_load_dir        ; 0x0042
@@ -72,35 +60,30 @@ _sh_tmp11:      times  12 db 0      ; 0x00E0 - 0x00EB
 _sh_type_sz:    dw 0                ; 0x00EC - 0x00ED
 
 ; ---------------------------------------------------------------------------
-; 0x00EE: kernel_entry - real startup code begins here
+; kernel_entry: Main kernel entry point
 ; ---------------------------------------------------------------------------
 kernel_entry:
-    mov ax, 0x1000
+    cli
+    xor ax, ax
     mov ds, ax
     mov es, ax
     mov ss, ax
     mov sp, 0xFFFE
-    mov [boot_drive], dl
+    sti
 
-    ; Set 80x25 text mode
-    mov ax, 0x0003
-    int 0x10
-
-    ; Hide cursor block (solid underscore style)
-    mov ah, 0x01
-    mov cx, 0x2607
-    int 0x10
-
-    ; Show splash screen
-    call splash_init
+    ; Initialize GUI system
+    call video_gui_init
+    call mouse_init
     
-    ; Load complete system with real progress tracking
-    call system_load_complete
-
-    call fat_init
-    call auth_init
-    call shell_run
-
+    ; Show GUI splash screen
+    call gui_show_splash
+    
+    ; Load system components
+    call gui_load_system
+    
+    ; Start GUI main loop
+    call gui_main_loop
+    
     cli
 .halt:
     hlt
@@ -194,8 +177,142 @@ system_load_complete:
     ret
 
 ; ---------------------------------------------------------------------------
-; Subsystem includes (order matters for forward references)
+; GUI Functions
 ; ---------------------------------------------------------------------------
+gui_show_splash:
+    push ax
+    push si
+    
+    ; Display KSDOS GUI splash
+    mov byte [current_color], 1    ; White
+    call video_clear_screen
+    
+    ; Draw KSDOS logo (simplified)
+    mov byte [current_color], 8    ; Orange
+    mov ax, 100
+    mov bx, 50
+    mov cx, 120
+    mov dx, 40
+    call video_fill_rect
+    
+    mov byte [current_color], 1    ; White
+    mov ax, 110
+    mov bx, 60
+    mov si, gui_title_text
+    call video_gfx_print
+    
+    pop si
+    pop ax
+    ret
+
+gui_load_system:
+    push ax
+    push cx
+    
+    ; Simulate system loading with progress
+    mov cx, 5
+    mov ax, 0
+    
+.load_loop:
+    push ax
+    call gui_update_progress
+    pop ax
+    inc ax
+    loop .load_loop
+    
+    pop cx
+    pop ax
+    ret
+
+gui_update_progress:
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    ; Draw progress bar
+    mov byte [current_color], 14   ; Light gray
+    mov ax, 50
+    mov bx, 150
+    mov cx, 220
+    mov dx, 20
+    call video_fill_rect
+    
+    ; Draw progress fill
+    mov byte [current_color], 2    ; Blue
+    mov ax, 50
+    mov bx, 150
+    mov cx, ax
+    mov cx, 220
+    sub cx, ax
+    mov dx, 20
+    call video_fill_rect
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+gui_main_loop:
+    push ax
+    push bx
+    push cx
+    
+    ; Main GUI event loop
+.main_loop:
+    ; Handle mouse input
+    call mouse_read
+    test ax, ax
+    jz .no_mouse
+    
+    ; Handle mouse events
+    call window_handle_mouse
+    
+.no_mouse:
+    ; Check for keyboard input
+    call kbd_check
+    test al, al
+    jz .no_key
+    
+    ; Handle key events (ESC to quit)
+    cmp al, 27          ; ESC key
+    je .quit
+    
+.no_key:
+    ; Redraw screen
+    call video_draw_desktop
+    call window_redraw_all
+    call video_draw_mouse
+    
+    ; Small delay
+    mov cx, 0x1000
+.delay:
+    loop .delay
+    
+    jmp .main_loop
+    
+.quit:
+    ; Return to text mode
+    mov ax, 0x0003
+    int 0x10
+    
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ---------------------------------------------------------------------------
+; GUI Data
+; ---------------------------------------------------------------------------
+gui_title_text: db "KSDOS GUI System", 0
+
+; ---------------------------------------------------------------------------
+; GUI Subsystem includes
+; ---------------------------------------------------------------------------
+%include "video_gui.asm"
+%include "window_gui.asm"
+%include "mouse_gui.asm"
 %include "string.asm"
 %include "video.asm"
 %include "keyboard.asm"
@@ -203,7 +320,6 @@ system_load_complete:
 %include "fat12.asm"
 %include "auth.asm"
 %include "install.asm"
-%include "splash.asm"
 %include "music.asm"
 %include "shell.asm"
 
