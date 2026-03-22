@@ -1,5 +1,5 @@
 ; =============================================================================
-; HAL.DLL - Hardware Abstraction Layer
+; HAL.DLL - Hardware Abstraction Layer (16-bit Real Mode)
 ; Provides low-level hardware interface for KSDOS
 ; =============================================================================
 
@@ -8,13 +8,250 @@ org 0x1000
 ; ---- HAL header ----
 db 'HAL ', 0, 0, 0           ; Signature
 dw 0x0200                     ; Version 2.0
-dd hal_start                   ; Entry point
-dd hal_end - hal_start         ; HAL size
+dw hal_start                  ; Entry point (16-bit offset)
+dw hal_end - hal_start        ; HAL size
 dd 0x00000000                  ; Reserved
 
+; ---- HAL function table ----
+function_table:
+    dw hal_init               ; Function 0: Initialize HAL
+    dw hal_read_port          ; Function 1: Read from I/O port
+    dw hal_write_port         ; Function 2: Write to I/O port
+    dw hal_get_memory_size    ; Function 3: Get memory size
+    dw hal_enable_interrupts  ; Function 4: Enable interrupts
+    dw hal_disable_interrupts ; Function 5: Disable interrupts
+    dw hal_halt               ; Function 6: Halt CPU
+    dw hal_out_byte           ; Function 7: Output byte to port
+    dw hal_in_byte            ; Function 8: Input byte from port
+    dw hal_detect_cpu         ; Function 9: Detect CPU type
+
+function_count equ 10
+
+; ---- Hardware constants ----
+PIC_MASTER_CMD    equ 0x20
+PIC_MASTER_DATA   equ 0x21
+PIC_SLAVE_CMD     equ 0xA0
+PIC_SLAVE_DATA    equ 0xA1
+TIMER_CMD         equ 0x43
+TIMER_DATA        equ 0x40
+KBD_CTRL          equ 0x60
+KBD_STATUS        equ 0x64
+
 hal_start:
-    ; Hardware abstraction functions
+    ; Initialize HAL
+    call hal_init
+    
+    ; Return success
+    xor ax, ax
     ret
+
+; =============================================================================
+; hal_init: Initialize Hardware Abstraction Layer
+; =============================================================================
+hal_init:
+    push ax
+    push dx
+    
+    ; Initialize PIC (Programmable Interrupt Controller)
+    mov al, 0x11        ; ICW1: Initialize + need ICW4
+    out PIC_MASTER_CMD, al
+    call hal_short_delay
+    
+    out PIC_SLAVE_CMD, al
+    call hal_short_delay
+    
+    ; ICW2: Vector offset
+    mov al, 0x20        ; Master PIC: vectors 0x20-0x27
+    out PIC_MASTER_DATA, al
+    call hal_short_delay
+    
+    mov al, 0x28        ; Slave PIC: vectors 0x28-0x2F
+    out PIC_SLAVE_DATA, al
+    call hal_short_delay
+    
+    ; ICW3: Cascade
+    mov al, 0x04        ; Master PIC: slave at IRQ2
+    out PIC_MASTER_DATA, al
+    call hal_short_delay
+    
+    mov al, 0x02        ; Slave PIC: cascade identity
+    out PIC_SLAVE_DATA, al
+    call hal_short_delay
+    
+    ; ICW4: Mode
+    mov al, 0x01        ; 8086 mode
+    out PIC_MASTER_DATA, al
+    call hal_short_delay
+    
+    out PIC_SLAVE_DATA, al
+    call hal_short_delay
+    
+    ; Initialize timer
+    mov al, 0x36        ; Timer 0, mode 3, binary
+    out TIMER_CMD, al
+    call hal_short_delay
+    
+    mov al, 0x00        ; Low byte of divisor
+    out TIMER_DATA, al
+    call hal_short_delay
+    
+    mov al, 0x00        ; High byte of divisor
+    out TIMER_DATA, al
+    call hal_short_delay
+    
+    ; Display initialization message
+    mov si, hal_init_msg
+    call hal_print_string
+    
+    pop dx
+    pop ax
+    ret
+
+; =============================================================================
+; hal_read_port: Read from I/O port
+; Input: DX = port address
+; Output: AL = data read
+; =============================================================================
+hal_read_port:
+    in al, dx
+    ret
+
+; =============================================================================
+; hal_write_port: Write to I/O port
+; Input: DX = port address, AL = data
+; =============================================================================
+hal_write_port:
+    out dx, al
+    ret
+
+; =============================================================================
+; hal_get_memory_size: Get system memory size in KB
+; Output: AX = memory size in KB
+; =============================================================================
+hal_get_memory_size:
+    push dx
+    push cx
+    
+    ; Use INT 0x12 to get memory size
+    int 0x12
+    
+    pop cx
+    pop dx
+    ret
+
+; =============================================================================
+; hal_enable_interrupts: Enable hardware interrupts
+; =============================================================================
+hal_enable_interrupts:
+    sti
+    ret
+
+; =============================================================================
+; hal_disable_interrupts: Disable hardware interrupts
+; =============================================================================
+hal_disable_interrupts:
+    cli
+    ret
+
+; =============================================================================
+; hal_halt: Halt CPU until next interrupt
+; =============================================================================
+hal_halt:
+    hlt
+    ret
+
+; =============================================================================
+; hal_out_byte: Output byte to port with delay
+; Input: DX = port, AL = data
+; =============================================================================
+hal_out_byte:
+    out dx, al
+    call hal_short_delay
+    ret
+
+; =============================================================================
+; hal_in_byte: Input byte from port with delay
+; Input: DX = port
+; Output: AL = data
+; =============================================================================
+hal_in_byte:
+    in al, dx
+    call hal_short_delay
+    ret
+
+; =============================================================================
+; hal_detect_cpu: Detect CPU type
+; Output: AX = CPU type (0=8086, 1=80286, 2=80386+)
+; =============================================================================
+hal_detect_cpu:
+    pushf
+    push bx
+    push cx
+    
+    ; Try to change flags that don't exist in 8086
+    mov ax, 0xF000
+    push ax
+    popf
+    pushf
+    pop ax
+    
+    ; Check if flags were changed
+    and ax, 0xF000
+    cmp ax, 0xF000
+    jne .is_286_plus
+    
+    ; 8086 processor
+    mov ax, 0
+    jmp .done
+    
+.is_286_plus:
+    ; Check for 386+ by trying to set bit 18 of EFLAGS
+    ; (simplified - assume 286 if we got here)
+    mov ax, 1
+    
+.done:
+    pop cx
+    pop bx
+    popf
+    ret
+
+; =============================================================================
+; hal_print_string: Print string using BIOS
+; Input: SI = string pointer
+; =============================================================================
+hal_print_string:
+    push ax
+    push si
+    
+.print_loop:
+    lodsb
+    cmp al, 0
+    je .done
+    
+    mov ah, 0x0E
+    int 0x10
+    jmp .print_loop
+    
+.done:
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; hal_short_delay: Very short delay for hardware operations
+; =============================================================================
+hal_short_delay:
+    push cx
+    mov cx, 0x100
+.delay:
+    loop .delay
+    pop cx
+    ret
+
+; =============================================================================
+; Messages
+; =============================================================================
+hal_init_msg    db 'HAL.DLL: Hardware Abstraction Layer initialized (16-bit)', 0x0D, 0x0A, 0
 
 hal_end:
     db 'END', 0, 0, 0         ; End marker

@@ -1,6 +1,6 @@
 ; =============================================================================
-; WIN32K.SYS - Windows 32 Kernel
-; Graphics and windowing system driver
+; WIN32K.SYS - Windows 32 Kernel (16-bit Real Mode)
+; Graphics and windowing system driver for KSDOS
 ; =============================================================================
 
 org 0x1000
@@ -8,13 +8,503 @@ org 0x1000
 ; ---- WIN32K header ----
 db 'W32K', 0, 0, 0           ; Signature
 dw 0x0200                     ; Version 2.0
-dd win32k_start                ; Entry point
-dd win32k_end - win32k_start    ; Size
+dw win32k_start                ; Entry point (16-bit offset)
+dw win32k_end - win32k_start    ; Size
 dd 0x00000000                  ; Reserved
 
+; ---- Graphics function table ----
+function_table:
+    dw win32k_init            ; Function 0: Initialize graphics
+    dw win32k_set_mode        ; Function 1: Set video mode
+    dw win32k_draw_pixel      ; Function 2: Draw pixel
+    dw win32k_draw_line       ; Function 3: Draw line
+    dw win32k_draw_rect       ; Function 4: Draw rectangle
+    dw win32k_fill_rect       ; Function 5: Fill rectangle
+    dw win32k_draw_text       ; Function 6: Draw text
+    dw win32k_create_window   ; Function 7: Create window
+    dw win32k_show_window     ; Function 8: Show window
+    dw win32k_update_screen   ; Function 9: Update screen
+
+function_count equ 10
+
+; ---- Video memory constants ----
+VIDEO_SEGMENT    equ 0xB800
+VIDEO_WIDTH      equ 80
+VIDEO_HEIGHT     equ 25
+VIDEO_SIZE       equ VIDEO_WIDTH * VIDEO_HEIGHT
+
+; ---- Color constants ----
+COLOR_BLACK      equ 0x00
+COLOR_BLUE       equ 0x01
+COLOR_GREEN      equ 0x02
+COLOR_CYAN       equ 0x03
+COLOR_RED        equ 0x04
+COLOR_MAGENTA    equ 0x05
+COLOR_BROWN      equ 0x06
+COLOR_LIGHTGRAY  equ 0x07
+COLOR_DARKGRAY   equ 0x08
+COLOR_LIGHTBLUE  equ 0x09
+COLOR_LIGHTGREEN equ 0x0A
+COLOR_LIGHTCYAN  equ 0x0B
+COLOR_LIGHTRED   equ 0x0C
+COLOR_LIGHTMAGENTA equ 0x0D
+COLOR_YELLOW     equ 0x0E
+COLOR_WHITE      equ 0x0F
+
+; ---- Window management ----
+MAX_WINDOWS      equ 16
+window_table:
+    dw MAX_WINDOWS dup(0)    ; Window handles
+active_window    dw 0
+next_window_id   dw 1
+
+; ---- Window structure ----
+window_struct:
+    handle          dw 0
+    x               dw 0
+    y               dw 0
+    width           dw 0
+    height          dw 0
+    title           dw 0
+    visible         db 0
+    buffer          dw 0
+
 win32k_start:
-    ; Graphics subsystem initialization
+    ; Initialize graphics subsystem
+    call win32k_init
+    
+    ; Return success
+    xor ax, ax
     ret
+
+; =============================================================================
+; win32k_init: Initialize graphics subsystem
+; =============================================================================
+win32k_init:
+    push ax
+    push si
+    
+    ; Initialize window table
+    mov cx, MAX_WINDOWS
+    mov si, window_table
+    xor ax, ax
+.init_window_loop:
+    mov [si], ax
+    add si, 2
+    loop .init_window_loop
+    
+    ; Set default video mode (80x25 text)
+    mov ax, 0x0003
+    int 0x10
+    
+    ; Clear screen
+    call win32k_clear_screen
+    
+    ; Display initialization message
+    mov si, win32k_init_msg
+    call win32k_print_string
+    
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_set_mode: Set video mode
+; Input: AL = video mode
+; =============================================================================
+win32k_set_mode:
+    push ax
+    
+    mov ah, 0x00
+    int 0x10
+    
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_draw_pixel: Draw pixel at position
+; Input: CX = X, DX = Y, AL = color
+; =============================================================================
+win32k_draw_pixel:
+    push ax
+    push bx
+    push di
+    
+    ; Check bounds
+    cmp cx, VIDEO_WIDTH
+    jae .done
+    cmp dx, VIDEO_HEIGHT
+    jae .done
+    
+    ; Calculate video memory offset
+    mov ax, VIDEO_WIDTH
+    mul dx
+    add ax, cx
+    shl ax, 1  ; Multiply by 2 (attribute + character)
+    mov di, ax
+    
+    ; Write pixel (as character with color)
+    mov ah, al  ; Move color to attribute
+    mov al, 0xDB ; Full block character
+    mov [VIDEO_SEGMENT:di], ax
+    
+.done:
+    pop di
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_draw_line: Draw line from (x1,y1) to (x2,y2)
+; Input: CX = x1, DX = y1, BX = x2, AX = y2, SI = color
+; =============================================================================
+win32k_draw_line:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    ; Simplified line drawing (horizontal/vertical only)
+    cmp cx, bx
+    je .vertical_line
+    cmp dx, ax
+    je .horizontal_line
+    jmp .done
+    
+.horizontal_line:
+    ; Draw horizontal line
+    cmp cx, bx
+    jl .h_reverse
+    
+.h_forward:
+    mov al, si
+    call win32k_draw_pixel
+    inc cx
+    cmp cx, bx
+    jle .h_forward
+    jmp .done
+    
+.h_reverse:
+    mov al, si
+    call win32k_draw_pixel
+    dec cx
+    cmp cx, bx
+    jge .h_reverse
+    jmp .done
+    
+.vertical_line:
+    ; Draw vertical line
+    cmp dx, ax
+    jl .v_reverse
+    
+.v_forward:
+    mov al, si
+    call win32k_draw_pixel
+    inc dx
+    cmp dx, ax
+    jle .v_forward
+    jmp .done
+    
+.v_reverse:
+    mov al, si
+    call win32k_draw_pixel
+    dec dx
+    cmp dx, ax
+    jge .v_reverse
+    
+.done:
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_draw_rect: Draw rectangle outline
+; Input: CX = x, DX = y, BX = width, AX = height, SI = color
+; =============================================================================
+win32k_draw_rect:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    ; Save original position
+    mov di, cx
+    mov bp, dx
+    
+    ; Draw top edge
+    push ax
+    push bx
+    mov bx, cx
+    add bx, ax
+    dec bx
+    mov ax, dx
+    call win32k_draw_line
+    pop bx
+    pop ax
+    
+    ; Draw bottom edge
+    push ax
+    push bx
+    mov cx, di
+    mov dx, bp
+    add dx, ax
+    dec dx
+    mov bx, cx
+    add bx, ax
+    dec bx
+    call win32k_draw_line
+    pop bx
+    pop ax
+    
+    ; Draw left edge
+    push ax
+    push bx
+    mov cx, di
+    mov dx, bp
+    mov bx, cx
+    mov ax, dx
+    add ax, bp
+    add ax, si
+    dec ax
+    call win32k_draw_line
+    pop bx
+    pop ax
+    
+    ; Draw right edge
+    push ax
+    push bx
+    mov cx, di
+    add cx, bx
+    dec cx
+    mov dx, bp
+    mov bx, cx
+    mov ax, dx
+    add ax, bp
+    add ax, si
+    dec ax
+    call win32k_draw_line
+    pop bx
+    pop ax
+    
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_fill_rect: Fill rectangle with color
+; Input: CX = x, DX = y, BX = width, AX = height, SI = color
+; =============================================================================
+win32k_fill_rect:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    mov di, ax  ; Save height
+    
+.fill_loop:
+    push cx
+    push dx
+    push bx
+    
+    ; Draw horizontal line
+    mov ax, dx
+    mov bx, cx
+    add bx, si
+    dec bx
+    call win32k_draw_line
+    
+    pop bx
+    pop dx
+    pop cx
+    
+    inc dx
+    dec di
+    jnz .fill_loop
+    
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_draw_text: Draw text at position
+; Input: CX = x, DX = y, SI = text pointer, BL = color
+; =============================================================================
+win32k_draw_text:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    mov di, si  ; Save text pointer
+    
+.text_loop:
+    lodsb
+    cmp al, 0
+    je .done
+    
+    ; Calculate video memory offset
+    mov ax, VIDEO_WIDTH
+    mul dx
+    add ax, cx
+    shl ax, 1
+    mov di, ax
+    
+    ; Write character with color
+    mov ah, bl
+    mov [VIDEO_SEGMENT:di], ax
+    
+    inc cx
+    jmp .text_loop
+    
+.done:
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_create_window: Create window
+; Input: CX = x, DX = y, BX = width, AX = height, SI = title pointer
+; Output: AX = window handle (0 = error)
+; =============================================================================
+win32k_create_window:
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    ; Find free window slot
+    mov cx, MAX_WINDOWS
+    mov di, window_table
+.find_slot:
+    cmp word [di], 0
+    je .found_slot
+    add di, 2
+    loop .find_slot
+    
+    ; No free slots
+    xor ax, ax
+    jmp .done
+    
+.found_slot:
+    ; Allocate window handle
+    mov ax, [next_window_id]
+    mov [di], ax
+    inc word [next_window_id]
+    
+    ; Store window data (simplified)
+    ; In real implementation, would allocate window structure
+    
+.done:
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    ret
+
+; =============================================================================
+; win32k_show_window: Show window
+; Input: AX = window handle
+; =============================================================================
+win32k_show_window:
+    push ax
+    push si
+    
+    ; Find window and make visible
+    mov [active_window], ax
+    
+    ; Draw window frame (simplified)
+    mov cx, 10
+    mov dx, 5
+    mov bx, 60
+    mov si, 20
+    mov di, COLOR_WHITE
+    call win32k_draw_rect
+    
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_update_screen: Update screen display
+; =============================================================================
+win32k_update_screen:
+    ; In text mode, screen is updated automatically
+    ret
+
+; =============================================================================
+; win32k_clear_screen: Clear entire screen
+; =============================================================================
+win32k_clear_screen:
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    mov ax, 0x0600
+    mov bh, COLOR_LIGHTGRAY
+    mov cx, 0x0000
+    mov dx, 0x184F
+    int 0x10
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; =============================================================================
+; win32k_print_string: Print string using BIOS
+; Input: SI = string pointer
+; =============================================================================
+win32k_print_string:
+    push ax
+    push si
+    
+.print_loop:
+    lodsb
+    cmp al, 0
+    je .done
+    
+    mov ah, 0x0E
+    int 0x10
+    jmp .print_loop
+    
+.done:
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; Messages
+; =============================================================================
+win32k_init_msg db 'WIN32K.SYS: Graphics subsystem initialized (16-bit)', 0x0D, 0x0A, 0
 
 win32k_end:
     db 'END', 0, 0, 0         ; End marker

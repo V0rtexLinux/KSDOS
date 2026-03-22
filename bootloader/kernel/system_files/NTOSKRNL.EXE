@@ -1,5 +1,5 @@
 ; =============================================================================
-; NTOSKRNL.EXE - NT Operating System Kernel
+; NTOSKRNL.EXE - NT Operating System Kernel (16-bit Real Mode)
 ; Core executive services for KSDOS
 ; =============================================================================
 
@@ -8,13 +8,381 @@ org 0x1000
 ; ---- NTOSKRNL header ----
 db 'NTKR', 0, 0, 0           ; Signature
 dw 0x0200                     ; Version 2.0
-dd ntoskrnl_start              ; Entry point
-dd ntoskrnl_end - ntoskrnl_start  ; Size
+dw ntoskrnl_start              ; Entry point (16-bit offset)
+dw ntoskrnl_end - ntoskrnl_start  ; Size
 dd 0x00000000                  ; Reserved
 
+; ---- Executive function table ----
+function_table:
+    dw ntoskrnl_init          ; Function 0: Initialize executive
+    dw ntoskrnl_create_process ; Function 1: Create process
+    dw ntoskrnl_terminate_process ; Function 2: Terminate process
+    dw ntoskrnl_create_thread ; Function 3: Create thread
+    dw ntoskrnl_terminate_thread ; Function 4: Terminate thread
+    dw ntoskrnl_sleep         ; Function 5: Sleep
+    dw ntoskrnl_get_tick_count ; Function 6: Get tick count
+    dw ntoskrnl_allocate_memory ; Function 7: Allocate memory
+    dw ntoskrnl_free_memory   ; Function 8: Free memory
+    dw ntoskrnl_create_event  ; Function 9: Create event
+
+function_count equ 10
+
+; ---- Process management structures ----
+process_table:
+    dw 32 dup(0)              ; 32 process slots
+current_process_id dw 0
+next_process_id   dw 1
+
+; ---- Thread management structures ----
+thread_table:
+    dw 64 dup(0)              ; 64 thread slots
+current_thread_id dw 0
+next_thread_id   dw 1
+
+; ---- Memory management ----
+memory_heap_start  equ 0x8000
+memory_heap_size   equ 0x8000  ; 32KB heap
+memory_heap_ptr    dw memory_heap_start
+
+; ---- Event management ----
+event_table:
+    dw 16 dup(0)              ; 16 event slots
+next_event_id     dw 1
+
 ntoskrnl_start:
-    ; Executive services initialization
+    ; Initialize NT executive
+    call ntoskrnl_init
+    
+    ; Return success
+    xor ax, ax
     ret
+
+; =============================================================================
+; ntoskrnl_init: Initialize NT Executive
+; =============================================================================
+ntoskrnl_init:
+    push ax
+    push si
+    
+    ; Initialize process table
+    mov cx, 32
+    mov si, process_table
+    xor ax, ax
+.init_process_loop:
+    mov [si], ax
+    add si, 2
+    loop .init_process_loop
+    
+    ; Initialize thread table
+    mov cx, 64
+    mov si, thread_table
+    xor ax, ax
+.init_thread_loop:
+    mov [si], ax
+    add si, 2
+    loop .init_thread_loop
+    
+    ; Initialize memory heap
+    mov [memory_heap_ptr], memory_heap_start
+    
+    ; Initialize event table
+    mov cx, 16
+    mov si, event_table
+    xor ax, ax
+.init_event_loop:
+    mov [si], ax
+    add si, 2
+    loop .init_event_loop
+    
+    ; Display initialization message
+    mov si, ntoskrnl_init_msg
+    call ntoskrnl_print_string
+    
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; ntoskrnl_create_process: Create new process
+; Input: SI = process name pointer
+; Output: AX = process ID (0 = error)
+; =============================================================================
+ntoskrnl_create_process:
+    push bx
+    push cx
+    push si
+    push di
+    
+    ; Find free process slot
+    mov cx, 32
+    mov di, process_table
+.find_slot:
+    cmp word [di], 0
+    je .found_slot
+    add di, 2
+    loop .find_slot
+    
+    ; No free slots
+    xor ax, ax
+    jmp .done
+    
+.found_slot:
+    ; Allocate process ID
+    mov ax, [next_process_id]
+    mov [di], ax
+    inc word [next_process_id]
+    
+    ; Initialize process (simplified)
+    ; In real implementation, would set up process context
+    
+.done:
+    pop di
+    pop si
+    pop cx
+    pop bx
+    ret
+
+; =============================================================================
+; ntoskrnl_terminate_process: Terminate process
+; Input: AX = process ID
+; Output: AX = 0 (success), 1 (error)
+; =============================================================================
+ntoskrnl_terminate_process:
+    push bx
+    push cx
+    push si
+    
+    ; Find process in table
+    mov cx, 32
+    mov si, process_table
+.find_process:
+    cmp [si], ax
+    je .found_process
+    add si, 2
+    loop .find_process
+    
+    ; Process not found
+    mov ax, 1
+    jmp .done
+    
+.found_process:
+    ; Mark slot as free
+    mov word [si], 0
+    xor ax, ax    ; Success
+    
+.done:
+    pop si
+    pop cx
+    pop bx
+    ret
+
+; =============================================================================
+; ntoskrnl_create_thread: Create new thread
+; Input: AX = process ID, SI = entry point
+; Output: AX = thread ID (0 = error)
+; =============================================================================
+ntoskrnl_create_thread:
+    push bx
+    push cx
+    push si
+    push di
+    
+    ; Find free thread slot
+    mov cx, 64
+    mov di, thread_table
+.find_slot:
+    cmp word [di], 0
+    je .found_slot
+    add di, 2
+    loop .find_slot
+    
+    ; No free slots
+    xor ax, ax
+    jmp .done
+    
+.found_slot:
+    ; Allocate thread ID
+    mov bx, [next_thread_id]
+    mov [di], bx
+    inc word [next_thread_id]
+    mov ax, bx
+    
+    ; Initialize thread (simplified)
+    ; In real implementation, would set up thread stack and context
+    
+.done:
+    pop di
+    pop si
+    pop cx
+    pop bx
+    ret
+
+; =============================================================================
+; ntoskrnl_terminate_thread: Terminate thread
+; Input: AX = thread ID
+; Output: AX = 0 (success), 1 (error)
+; =============================================================================
+ntoskrnl_terminate_thread:
+    push bx
+    push cx
+    push si
+    
+    ; Find thread in table
+    mov cx, 64
+    mov si, thread_table
+.find_thread:
+    cmp [si], ax
+    je .found_thread
+    add si, 2
+    loop .find_thread
+    
+    ; Thread not found
+    mov ax, 1
+    jmp .done
+    
+.found_thread:
+    ; Mark slot as free
+    mov word [si], 0
+    xor ax, ax    ; Success
+    
+.done:
+    pop si
+    pop cx
+    pop bx
+    ret
+
+; =============================================================================
+; ntoskrnl_sleep: Sleep for specified milliseconds
+; Input: CX = milliseconds
+; =============================================================================
+ntoskrnl_sleep:
+    push ax
+    push cx
+    push dx
+    
+    ; Simple delay loop (not accurate)
+    mov dx, cx
+.sleep_loop:
+    mov cx, 0x1000
+.delay:
+    loop .delay
+    dec dx
+    jnz .sleep_loop
+    
+    pop dx
+    pop cx
+    pop ax
+    ret
+
+; =============================================================================
+; ntoskrnl_get_tick_count: Get system tick count
+; Output: DX:AX = tick count
+; =============================================================================
+ntoskrnl_get_tick_count:
+    ; Use BIOS timer tick (INT 0x1A, AH=0)
+    int 0x1A
+    ret
+
+; =============================================================================
+; ntoskrnl_allocate_memory: Allocate memory from heap
+; Input: CX = size in bytes
+; Output: AX = pointer (0 = error)
+; =============================================================================
+ntoskrnl_allocate_memory:
+    push bx
+    push cx
+    push dx
+    
+    ; Check if enough memory available
+    mov ax, [memory_heap_ptr]
+    add ax, cx
+    cmp ax, memory_heap_start + memory_heap_size
+    ja .no_memory
+    
+    ; Allocate memory
+    mov ax, [memory_heap_ptr]
+    add [memory_heap_ptr], cx
+    jmp .done
+    
+.no_memory:
+    xor ax, ax    ; Error
+    
+.done:
+    pop dx
+    pop cx
+    pop bx
+    ret
+
+; =============================================================================
+; ntoskrnl_free_memory: Free memory (simplified)
+; Input: AX = pointer
+; =============================================================================
+ntoskrnl_free_memory:
+    ; Simplified - in real implementation would manage free list
+    ret
+
+; =============================================================================
+; ntoskrnl_create_event: Create event object
+; Output: AX = event ID (0 = error)
+; =============================================================================
+ntoskrnl_create_event:
+    push bx
+    push cx
+    push si
+    push di
+    
+    ; Find free event slot
+    mov cx, 16
+    mov di, event_table
+.find_slot:
+    cmp word [di], 0
+    je .found_slot
+    add di, 2
+    loop .find_slot
+    
+    ; No free slots
+    xor ax, ax
+    jmp .done
+    
+.found_slot:
+    ; Allocate event ID
+    mov ax, [next_event_id]
+    mov [di], ax
+    inc word [next_event_id]
+    
+.done:
+    pop di
+    pop si
+    pop cx
+    pop bx
+    ret
+
+; =============================================================================
+; ntoskrnl_print_string: Print string using BIOS
+; Input: SI = string pointer
+; =============================================================================
+ntoskrnl_print_string:
+    push ax
+    push si
+    
+.print_loop:
+    lodsb
+    cmp al, 0
+    je .done
+    
+    mov ah, 0x0E
+    int 0x10
+    jmp .print_loop
+    
+.done:
+    pop si
+    pop ax
+    ret
+
+; =============================================================================
+; Messages
+; =============================================================================
+ntoskrnl_init_msg db 'NTOSKRNL.EXE: NT Executive initialized (16-bit)', 0x0D, 0x0A, 0
 
 ntoskrnl_end:
     db 'END', 0, 0, 0         ; End marker
