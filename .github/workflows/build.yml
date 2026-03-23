@@ -28,7 +28,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ksds-disks
-        path: ./build/disks/*.img   # todos os arquivos .img gerados
+        path: ./build/disks/*.IMG   # todos os arquivos .IMG gerados (maiúsculo)
         retention-days: 30
 
     # Upload dos binários do kernel
