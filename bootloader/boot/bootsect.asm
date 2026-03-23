@@ -277,7 +277,7 @@ clus:       dw 0               ; current cluster being loaded
 wptr:       dw 0               ; write pointer (offset)
 wseg:       dw 0x1000          ; write segment
 
-msg_load:   db "KSDOS Boot Loader v2.0", 13, 10, 0
+msg_load:   db "KSDOS Boot Loader v2.0 - Loading SYSTEM modules...", 13, 10, 0
 msg_nf:     db "KSDOS.SYS not found!", 13, 10, 0
 msg_err:    db "Disk read error!", 13, 10, 0
 

@@ -1,6 +1,6 @@
 ; =============================================================================
-; splash.asm - KSDOS Splash Screen with Real Progress
-; Works directly with boot.asm and bootsect.asm loading progress
+; splash.asm - KSDOS Text Mode Splash Screen
+; Works directly with boot.asm loading progress
 ; =============================================================================
 
 ; ---- Splash screen ASCII art ----
@@ -21,20 +21,20 @@ splash_art:
 
 ; ---- Progress bar ----
 splash_progress_bar: db "[", 0
-splash_progress_fill: db "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||", 0
-splash_progress_empty: db "                                                                                                        ", 0
+splash_progress_fill: db "##########", 0
+splash_progress_empty: db "          ", 0
 splash_progress_end: db "]", 0x0A, 0
 
 ; ---- Progress tracking ----
-boot_progress     db 0          ; 0-100 percentage
+boot_progress     db 0          ; 0-10 percentage (simplified for text)
 total_steps       equ 5         ; Total loading steps
 
 ; ---- Loading messages ----
 msg_boot_init     db "Initializing bootloader...", 0x0D, 0
 msg_fat_load      db "Loading FAT tables...", 0x0D, 0
 msg_root_load     db "Loading root directory...", 0x0D, 0
-msg_kernel_find   db "Finding KSDOS.SYS...", 0x0D, 0
-msg_kernel_load   db "Loading KSDOS kernel...", 0x0D, 0
+msg_kernel_find   db "Finding KSDOS KERNEL.ASM...", 0x0D, 0
+msg_kernel_load   db "Loading KSDOS kernel system...", 0x0D, 0
 msg_complete      db "System ready!", 0x0A, 0x0A, 0
 
 ; ============================================================
@@ -172,8 +172,8 @@ splash_print_progress:
     ; Get current progress
     mov al, [boot_progress]
     
-    ; Calculate filled portion (percentage of 100 chars)
-    ; AL already contains the percentage (0-100)
+    ; Calculate filled portion (simplified for 10 chars)
+    ; AL already contains the percentage (0-10)
     
     ; Print filled portion
     mov cl, al
@@ -188,7 +188,7 @@ splash_print_progress:
 
 .print_empty:
     ; Calculate remaining spaces
-    mov cl, 100
+    mov cl, 10
     sub cl, al
 .print_empty_loop:
     test cl, cl
@@ -215,8 +215,8 @@ splash_complete:
     push ax
     push si
     
-    ; Set progress to 100%
-    mov byte [boot_progress], 100
+    ; Set progress to 10 (100%)
+    mov byte [boot_progress], 10
     
     ; Print completion message
     mov si, msg_complete

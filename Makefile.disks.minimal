@@ -1,0 +1,183 @@
+# =============================================================================
+# KSDOS MS-DOS Installation Disks Build System (Minimal Windows Version)
+# Creates three 1.44MB floppy images simulating MS-DOS installation
+# =============================================================================
+
+BUILD    := build
+DISKS    := $(BUILD)/disks
+
+# MS-DOS Installation Disk Images
+DISK1_IMG := $(DISKS)/DISK1.IMG     # Setup/Boot Disk
+DISK2_IMG := $(DISKS)/DISK2.IMG     # Setup Disk 2
+DISK3_IMG := $(DISKS)/DISK3.IMG     # Setup Disk 3
+BOOT_IMG  := $(DISKS)/BOOT.IMG      # Alternative boot disk name
+
+.PHONY: all disks disk1 disk2 disk3 clean help dos-install
+
+all: disks
+
+# Create all three installation disks
+disks: disk1 disk2 disk3
+
+# ---------------------------------------------------------------------------
+# Disk 1 (Setup/Boot): Core system files and installation program
+# ---------------------------------------------------------------------------
+disk1: $(DISK1_IMG) $(BOOT_IMG)
+
+$(DISK1_IMG): | $(DISKS)
+	@echo "[CREATE] Creating DISK1.IMG - Setup/Boot Disk..."
+	@if not exist "$(DISKS)" mkdir "$(DISKS)"
+	@fsutil file createnew "$(DISK1_IMG)" 1474560
+	@echo "MS-DOS Installation Disk 1" > "$(BUILD)\disk1_info.txt"
+	@echo "=============================" >> "$(BUILD)\disk1_info.txt"
+	@echo "This disk contains the core MS-DOS system files:" >> "$(BUILD)\disk1_info.txt"
+	@echo "- IO.SYS (I/O subsystem)" >> "$(BUILD)\disk1_info.txt"
+	@echo "- MSDOS.SYS (MS-DOS kernel)" >> "$(BUILD)\disk1_info.txt"
+	@echo "- COMMAND.COM (Command interpreter)" >> "$(BUILD)\disk1_info.txt"
+	@echo "- SETUP.EXE (Installation program)" >> "$(BUILD)\disk1_info.txt"
+	@echo "- AUTOEXEC.BAT (Startup commands)" >> "$(BUILD)\disk1_info.txt"
+	@echo "- CONFIG.SYS (System configuration)" >> "$(BUILD)\disk1_info.txt"
+	@echo "" >> "$(BUILD)\disk1_info.txt"
+	@echo "This is DISK1.IMG - the boot disk required to start MS-DOS installation." >> "$(BUILD)\disk1_info.txt"
+	@powershell -Command "$$content = Get-Content '$(BUILD)\disk1_info.txt'; $$bytes = [System.Text.Encoding]::ASCII.GetBytes($$content); $$fs = [System.IO.File]::OpenWrite('$(DISK1_IMG)'); $$fs.Seek(1024, 'Begin'); $$fs.Write($$bytes, 0, $$bytes.Length); $$fs.Close()"
+	@echo "[OK]   DISK1.IMG ready - Core system and installer"
+
+$(BOOT_IMG): $(DISK1_IMG)
+	@copy "$(DISK1_IMG)" "$(BOOT_IMG)" >nul
+	@echo "[OK]   BOOT.IMG created (alternative name)"
+
+# ---------------------------------------------------------------------------
+# Disk 2 (Setup): Additional system files and utilities
+# ---------------------------------------------------------------------------
+disk2: $(DISK2_IMG)
+
+$(DISK2_IMG): | $(DISKS)
+	@echo "[CREATE] Creating DISK2.IMG - Setup Utilities Disk..."
+	@if not exist "$(DISKS)" mkdir "$(DISKS)"
+	@fsutil file createnew "$(DISK2_IMG)" 1474560
+	@echo "MS-DOS Installation Disk 2" > "$(BUILD)\disk2_info.txt"
+	@echo "=============================" >> "$(BUILD)\disk2_info.txt"
+	@echo "This disk contains system utilities and tools:" >> "$(BUILD)\disk2_info.txt"
+	@echo "- FDISK.EXE (Disk partitioning)" >> "$(BUILD)\disk2_info.txt"
+	@echo "- FORMAT.COM (Disk formatting)" >> "$(BUILD)\disk2_info.txt"
+	@echo "- SYS.COM (System transfer)" >> "$(BUILD)\disk2_info.txt"
+	@echo "- XCOPY.EXE (Extended copy)" >> "$(BUILD)\disk2_info.txt"
+	@echo "- EDIT.COM (Text editor)" >> "$(BUILD)\disk2_info.txt"
+	@echo "- HELP.EXE (Help system)" >> "$(BUILD)\disk2_info.txt"
+	@echo "" >> "$(BUILD)\disk2_info.txt"
+	@echo "This is DISK2.IMG - requested during MS-DOS installation for utilities." >> "$(BUILD)\disk2_info.txt"
+	@powershell -Command "$$content = Get-Content '$(BUILD)\disk2_info.txt'; $$bytes = [System.Text.Encoding]::ASCII.GetBytes($$content); $$fs = [System.IO.File]::OpenWrite('$(DISK2_IMG)'); $$fs.Seek(1024, 'Begin'); $$fs.Write($$bytes, 0, $$bytes.Length); $$fs.Close()"
+	@echo "[OK]   DISK2.IMG ready - System utilities"
+
+# ---------------------------------------------------------------------------
+# Disk 3 (Setup): Final files and complementary tools
+# ---------------------------------------------------------------------------
+disk3: $(DISK3_IMG)
+
+$(DISK3_IMG): | $(DISKS)
+	@echo "[CREATE] Creating DISK3.IMG - Setup Tools Disk..."
+	@if not exist "$(DISKS)" mkdir "$(DISKS)"
+	@fsutil file createnew "$(DISK3_IMG)" 1474560
+	@echo "MS-DOS Installation Disk 3" > "$(BUILD)\disk3_info.txt"
+	@echo "=============================" >> "$(BUILD)\disk3_info.txt"
+	@echo "This disk contains development tools and diagnostics:" >> "$(BUILD)\disk3_info.txt"
+	@echo "- DEBUG.EXE (Assembly debugger)" >> "$(BUILD)\disk3_info.txt"
+	@echo "- QBASIC.EXE (BASIC interpreter)" >> "$(BUILD)\disk3_info.txt"
+	@echo "- MEM.EXE (Memory display)" >> "$(BUILD)\disk3_info.txt"
+	@echo "- MSD.EXE (Diagnostics)" >> "$(BUILD)\disk3_info.txt"
+	@echo "- SCANDISK.EXE (Disk scanner)" >> "$(BUILD)\disk3_info.txt"
+	@echo "- DEFRAG.EXE (Defragmenter)" >> "$(BUILD)\disk3_info.txt"
+	@echo "" >> "$(BUILD)\disk3_info.txt"
+	@echo "This is DISK3.IMG - optional tools for complete MS-DOS installation." >> "$(BUILD)\disk3_info.txt"
+	@powershell -Command "$$content = Get-Content '$(BUILD)\disk3_info.txt'; $$bytes = [System.Text.Encoding]::ASCII.GetBytes($$content); $$fs = [System.IO.File]::OpenWrite('$(DISK3_IMG)'); $$fs.Seek(1024, 'Begin'); $$fs.Write($$bytes, 0, $$bytes.Length); $$fs.Close()"
+	@echo "[OK]   DISK3.IMG ready - Complementary tools"
+
+# ---------------------------------------------------------------------------
+# Directory creation
+# ---------------------------------------------------------------------------
+$(BUILD):
+	@if not exist "$(BUILD)" mkdir "$(BUILD)"
+
+$(DISKS):
+	@if not exist "$(DISKS)" mkdir "$(DISKS)"
+
+# ---------------------------------------------------------------------------
+# Installation simulation
+# ---------------------------------------------------------------------------
+dos-install: disks
+	@echo "[SIM] MS-DOS Installation Simulation"
+	@echo "===================================="
+	@echo "Disk 1 (Setup/Boot): DISK1.IMG / BOOT.IMG"
+	@echo "  - Core system files (IO.SYS, MSDOS.SYS, COMMAND.COM)"
+	@echo "  - Installation program (SETUP.EXE)"
+	@echo "  - Boot configuration (AUTOEXEC.BAT, CONFIG.SYS)"
+	@echo ""
+	@echo "Disk 2 (Setup): DISK2.IMG"
+	@echo "  - System utilities (FDISK.EXE, FORMAT.COM, SYS.COM)"
+	@echo "  - File management tools (XCOPY.EXE, EDIT.COM)"
+	@echo "  - Help system (HELP.EXE)"
+	@echo ""
+	@echo "Disk 3 (Setup): DISK3.IMG"
+	@echo "  - Development tools (DEBUG.EXE, QBASIC.EXE)"
+	@echo "  - System diagnostics (MEM.EXE, MSD.EXE)"
+	@echo "  - Disk utilities (SCANDISK.EXE, DEFRAG.EXE)"
+	@echo ""
+	@echo "Installation process:"
+	@echo "1. Boot from DISK1.IMG"
+	@echo "2. Run SETUP.EXE to install MS-DOS"
+	@echo "3. Insert DISK2.IMG when prompted for utilities"
+	@echo "4. Insert DISK3.IMG for additional tools"
+	@echo ""
+	@echo "Files created:"
+	@dir "$(DISKS)\*.IMG" /b 2>nul || echo "No disk images found"
+
+# ---------------------------------------------------------------------------
+# Testing
+# ---------------------------------------------------------------------------
+test-disk1: disk1
+	@echo "[INFO] To test DISK1.IMG boot, use:"
+	@echo "qemu-system-i386 -fda \"$(DISK1_IMG)\" -boot a -m 4 -vga std"
+	@echo "Note: QEMU must be installed separately"
+
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
+clean:
+	@echo "[CLEAN] Removing build files..."
+	@if exist "$(BUILD)" rmdir /s /q "$(BUILD)" >nul 2>&1
+	@echo "Cleanup completed"
+
+# ---------------------------------------------------------------------------
+# Help
+# ---------------------------------------------------------------------------
+help:
+	@echo "KSDOS MS-DOS Installation Disks Build System (Minimal Windows Version)"
+	@echo "======================================================================"
+	@echo ""
+	@echo "MS-DOS Installation Disk Reference:"
+	@echo "Disk 1 (Setup/Boot): Chamado frequentemente de DISK1.IMG ou BOOT.IMG em colecoes de retrocomputacao,"
+	@echo "este disquete continha o nucleo do sistema operacional (IO.SYS, MSDOS.SYS, COMMAND.COM) e o programa"
+	@echo "de instalacao. Era o disquete de boot necessario para iniciar o computador [1, 2]."
+	@echo ""
+	@echo "Disk 2 (Setup): Continha arquivos adicionais de sistema e utilitarios que eram copiados durante"
+	@echo "o processo de instalacao do MS-DOS."
+	@echo ""
+	@echo "Disk 3 (Setup): Continha os arquivos finais e ferramentas complementares necessarios para concluir"
+	@echo "a instalacao completa no disco rigido."
+	@echo ""
+	@echo "Targets:"
+	@echo "  all / disks    - Build all three installation disks"
+	@echo "  disk1          - Build DISK1.IMG (Setup/Boot)"
+	@echo "  disk2          - Build DISK2.IMG (Setup Utilities)"
+	@echo "  disk3          - Build DISK3.IMG (Setup Tools)"
+	@echo "  dos-install    - Show installation simulation"
+	@echo "  test-disk1     - Show QEMU command for testing"
+	@echo "  clean          - Remove build files"
+	@echo ""
+	@echo "Output files:"
+	@echo "  $(DISK1_IMG) - Core system and installer"
+	@echo "  $(DISK2_IMG) - System utilities"
+	@echo "  $(DISK3_IMG) - Complementary tools"
+	@echo "  $(BOOT_IMG)  - Alternative boot disk name"
+	@echo ""
+	@echo "Note: This minimal version creates placeholder disk images with documentation."
