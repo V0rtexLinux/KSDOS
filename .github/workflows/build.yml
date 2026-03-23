@@ -1,0 +1,88 @@
+name: KSDOS Build and Release
+
+on:
+  push:
+    branches: [ "main" ]      # build normal ao push na main
+    tags:                      # novo: dispara quando uma tag for criada
+      - 'v*'                   # tags que começam com v (ex: v1.0.0)
+  pull_request:
+    branches: [ "main" ]       # build para PRs (sem release)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install NASM
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y nasm
+
+    - uses: actions/checkout@v4
+
+    - name: Compilar KSDOS com Makefile.disks
+      run: make -f Makefile.disks
+
+    # Upload dos discos gerados como artefatos
+    - name: Upload discos como artefatos
+      uses: actions/upload-artifact@v4
+      with:
+        name: ksds-disks
+        path: ./build/disks/*.img   # todos os arquivos .img gerados
+        retention-days: 30
+
+    # Upload dos binários do kernel
+    - name: Upload binários do kernel
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-binaries
+        path: ./build/*.bin
+        retention-days: 30
+
+  # Job separado para criar a release (executa somente quando for uma tag)
+  release:
+    needs: build                # só executa se o build passar
+    if: startsWith(github.ref, 'refs/tags/v')  # só roda para tags v*
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Baixar artefatos dos discos
+      uses: actions/download-artifact@v4
+      with:
+        name: ksds-disks
+        path: ./artifacts/disks/
+
+    - name: Baixar artefatos do kernel
+      uses: actions/download-artifact@v4
+      with:
+        name: kernel-binaries
+        path: ./artifacts/kernel/
+
+    - name: Criar Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: KSDOS ${{ github.ref_name }}
+        body: |
+          ## KSDOS Operating System - Release ${{ github.ref_name }}
+          
+          ### Sistema completo com:
+          - Boot sector (bootsect.bin)
+          - Kernel principal (kernel.bin)
+          - Mass loader
+          - Todos os módulos do sistema (SYSTEM/)
+          - Discos de instalação (DISK1.IMG, DISK2.IMG, DISK3.IMG)
+          
+          ### Estrutura:
+          - **DISK1.IMG**: Disco de boot/setup principal
+          - **DISK2.IMG**: Utilitários do sistema
+          - **DISK3.IMG**: Ferramentas complementares
+          
+          ### Arquivos do kernel incluídos:
+          - Todos os arquivos .asm do diretório kernel/
+          - Todos os arquivos de bootloader/kernel/system/ (BIOS/, DOS/, CMD/, DEV/, etc.)
+          - Módulos de compilação, gráficos, rede, som, etc.
+        draft: false
+        prerelease: false
+        files: ./artifacts/**/*      # anexa todos os arquivos baixados
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

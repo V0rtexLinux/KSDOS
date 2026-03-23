@@ -1,0 +1,189 @@
+name: KSDOS Raspberry Pi Build
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-raspberry:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Install cross-compilation tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc-arm-linux-gnueabihf \
+          g++-arm-linux-gnueabihf \
+          make \
+          nasm \
+          qemu-user-static \
+          binutils-arm-linux-gnueabihf
+
+    - uses: actions/checkout@v4
+
+    - name: Create Raspberry Pi build environment
+      run: |
+        # Criar diretórios de build para ARM
+        mkdir -p build-raspberry/{disks,binaries,system}
+        
+        # Configurar variáveis de ambiente
+        echo "RASPBERRY_PI_BUILD=true" >> $GITHUB_ENV
+        echo "ARM_TOOLCHAIN_PREFIX=arm-linux-gnueabihf-" >> $GITHUB_ENV
+
+    - name: Build KSDOS for Raspberry Pi
+      run: |
+        # Compilar para ARM64/ARM32
+        make -f Makefile.disks \
+          CC=${{ env.ARM_TOOLCHAIN_PREFIX }}gcc \
+          AS=${{ env.ARM_TOOLCHAIN_PREFIX }}as \
+          LD=${{ env.ARM_TOOLCHAIN_PREFIX }}ld \
+          BUILD_DIR=build-raspberry \
+          TARGET_ARCH=arm
+        
+        # Verificar binários gerados
+        ls -la build-raspberry/
+        file build-raspberry/*.bin
+
+    - name: Create Raspberry Pi image
+      run: |
+        # Criar imagem SD card para Raspberry Pi
+        dd if=/dev/zero of=build-raspberry/ksdos-rpi.img bs=1M count=512
+        
+        # Criar partições (boot + root)
+        sfdisk build-raspberry/ksdos-rpi.img << EOF
+        label: dos
+        label-id: 0x0e
+        device: build-raspberry/ksdos-rpi.img
+        unit: sectors
+        
+        build-raspberry/ksdos-rpi.img1 : start=2048, type=0c, bootable
+        build-raspberry/ksdos-rpi.img2 : start=, type=83
+        EOF
+        
+        # Formatar partições
+        mkfs.vfat -F 32 -n "KSDOS_BOOT" build-raspberry/ksdos-rpi.img1
+        mkfs.ext4 -F -L "KSDOS_ROOT" build-raspberry/ksdos-rpi.img2
+        
+        # Montar e copiar arquivos
+        mkdir -p mnt/{boot,root}
+        sudo losetup --find --show build-raspberry/ksdos-rpi.img
+        sudo mount /dev/loop0p1 mnt/boot
+        sudo mount /dev/loop0p2 mnt/root
+        
+        # Copiar boot sector e kernel para partição de boot
+        sudo cp build-raspberry/*.bin mnt/boot/
+        sudo cp build-raspberry/disks/*.img mnt/boot/
+        
+        # Copiar sistema completo para partição root
+        sudo mkdir -p mnt/root/{boot,system,bin,etc}
+        sudo cp -r bootloader/kernel/system/ mnt/root/system/
+        sudo cp build-raspberry/* mnt/root/boot/
+        
+        # Criar scripts de inicialização
+        sudo cat > mnt/boot/config.txt << 'EOF'
+        # KSDOS Raspberry Pi Configuration
+        kernel=kernel.bin
+        disable_overscan=1
+        hdmi_force_hotplug=1
+        dtparam=audio=on
+        EOF
+        
+        sudo cat > mnt/boot/cmdline.txt << 'EOF'
+        console=tty1 console=ttyAMA0,115200 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait
+        EOF
+        
+        # Criar script de boot
+        sudo cat > mnt/root/boot-ksdos.sh << 'EOF'
+        #!/bin/bash
+        echo "Iniciando KSDOS para Raspberry Pi..."
+        cd /boot
+        ./kernel.bin
+        EOF
+        sudo chmod +x mnt/root/boot-ksdos.sh
+        
+        # Desmontar
+        sudo umount mnt/boot mnt/root
+        sudo losetup -d /dev/loop0
+
+    - name: Upload Raspberry Pi artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ksdos-raspberry-pi
+        path: |
+          build-raspberry/*.img
+          build-raspberry/*.bin
+          build-raspberry/disks/*
+        retention-days: 30
+
+    - name: Create Raspberry Pi package
+      run: |
+        # Criar pacote completo
+        mkdir -p release-package
+        
+        # Copiar imagem principal
+        cp build-raspberry/ksdos-rpi.img release-package/
+        
+        # Criar README para Raspberry Pi
+        cat > release-package/README-RASPBERRY.md << 'EOF'
+        # KSDOS para Raspberry Pi
+        
+        ## Instalação:
+        1. Grave a imagem ksdos-rpi.img em um cartão SD
+        2. Insira o cartão na Raspberry Pi
+        3. Ligue o dispositivo
+        
+        ## Estrutura:
+        - Partição Boot (FAT32): kernel.bin, discos de instalação
+        - Partição Root (EXT4): sistema completo com SYSTEM/
+        
+        ## Hardware suportado:
+        - Raspberry Pi 3, 4, 5
+        - Mínimo 1GB RAM
+        - Cartão SD mínimo 8GB
+        
+        ## Controles:
+        - Teclado USB
+        - Mouse USB
+        - Display HDMI
+        EOF
+        
+        # Criar script de instalação
+        cat > release-package/install-raspberry.sh << 'EOF'
+        #!/bin/bash
+        echo "Instalando KSDOS para Raspberry Pi..."
+        
+        if [ ! -f ksdos-rpi.img ]; then
+          echo "Erro: ksdos-rpi.img não encontrado!"
+          exit 1
+        fi
+        
+        echo "Conecte o cartão SD e pressione ENTER para continuar"
+        read
+        
+        # Detectar cartão SD
+        SD_CARD=$(lsblk -no NAME,SIZE | grep -E "sd[b-z].*[0-9]+G" | head -1 | awk '{print $1}')
+        
+        if [ -z "$SD_CARD" ]; then
+          echo "Erro: Cartão SD não encontrado!"
+          exit 1
+        fi
+        
+        echo "Gravando imagem em /dev/$SD_CARD..."
+        sudo dd if=ksdos-rpi.img of=/dev/$SD_CARD bs=1M status=progress
+        sync
+        
+        echo "Instalação concluída! Remova o cartão SD."
+        EOF
+        chmod +x release-package/install-raspberry.sh
+
+    - name: Upload Raspberry Pi package
+      uses: actions/upload-artifact@v4
+      with:
+        name: ksdos-raspberry-package
+        path: release-package/
+        retention-days: 30
