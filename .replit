@@ -22,9 +22,18 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "vnc"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd /home/runner/workspace && make image && make run"
+
+[workflows.workflow.metadata]
+outputType = "vnc"
+
+[[workflows.workflow]]
+name = "git clone"
+mode = "sequential"
+author = 52444163
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git clone https://github.com/microsoft/MS-DOS.git"
