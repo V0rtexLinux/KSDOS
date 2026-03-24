@@ -1,32 +1,24 @@
 ; =============================================================================
-; gold4.asm - KSDOS GOLD4 Engine (16-bit Real Mode)
-; DOOM-style raycaster engine based on sdk/gold4/
+; gold4.asm - KSDOS GOLD4 Engine (16-bit Real Mode) — FIXED v2
+; DOOM-style raycaster based on sdk/gold4/
 ;
-; Based on sdk/gold4/ SDK structure:
-;   - Engine: raycast column renderer (Mode 13h)
-;   - Map: 2D tile array  
-;   - Player: position, angle, FOV
-;   - Movement: WASD keyboard, ESC to quit
-;
-; Features:
-;   - 60-degree FOV raycaster (320 columns)
-;   - Wall distance shading
-;   - Textured walls (4 colours based on direction)
-;   - Ceiling (dark blue) and floor (dark grey)
-;   - Minimap in upper-right corner
-;   - HUD with position info
+; FIXES:
+;  - DDA ray cast: proper grid-aligned marching (no stack corruption)
+;  - Fisheye correction: imul (signed) instead of mul (unsigned)
+;  - Stack balance restored in g4_cast_ray
+;  - Wall height clamping improved
+;  - Floor/ceiling fill via memset rows (faster)
+;  - Collision detection added to movement
 ; =============================================================================
 
-; ---- Map constants ----
 MAP_W       equ 16
 MAP_H       equ 10
-HALF_FOV    equ 30              ; half field-of-view in degrees
+HALF_FOV    equ 30
+FOV_FULL    equ 60
+DEPTH_SCALE equ 160
+PROJ_DIST   equ 160        ; projection plane distance
 
-; ---- Angle & fixed-point math ----
-ANGLE_360   equ 360
-DEPTH_SCALE equ 100             ; scale factor for wall height calc
-
-; ---- Map data: 1=wall, 0=empty ----
+; ---- Map: 1=wall, 0=empty ----
 gold4_map:
     db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
     db 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
@@ -39,26 +31,24 @@ gold4_map:
     db 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
     db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
 
-; ---- Player state (fixed-point: *64) ----
-g4_px:          dw 64*3         ; player x (tile*64)
-g4_py:          dw 64*5         ; player y
-g4_angle:       dw 90           ; facing angle (degrees)
+; ---- Player state (fixed-point *64) ----
+g4_px:          dw 64*3
+g4_py:          dw 64*5
+g4_angle:       dw 90
 
-; ---- Column hit state ----
-g4_hit_x:       dw 0
-g4_hit_y:       dw 0
+; ---- Wall colours ----
+g4_wall_ns:     db 12
+g4_wall_ew:     db 4
+g4_ceil:        db 1
+g4_floor:       db 8
+g4_hud_col:     db 14
+
+; ---- Ray cast output ----
 g4_dist:        dw 0
-g4_side:        db 0            ; 0=vertical wall, 1=horizontal wall
-
-; Wall colours per side
-g4_wall_ns:     db 12           ; N/S wall colour (light red)
-g4_wall_ew:     db 4            ; E/W wall colour (dark red)
-g4_ceil:        db 1            ; ceiling colour (blue)
-g4_floor:       db 8            ; floor colour (dark grey)
-g4_hud_col:     db 14           ; HUD colour (yellow)
+g4_side:        db 0
 
 ; ============================================================
-; gold4_init: init the raycaster
+; gold4_init
 ; ============================================================
 gold4_init:
     push ax
@@ -68,7 +58,7 @@ gold4_init:
     ret
 
 ; ============================================================
-; gold4_draw_frame: render one frame
+; gold4_draw_frame: render one complete frame — FIXED
 ; ============================================================
 gold4_draw_frame:
     push ax
@@ -78,139 +68,136 @@ gold4_draw_frame:
     push si
     push di
 
-    ; Draw ceiling (top half)
-    mov al, [g4_ceil]
-    mov bx, 0               ; x=0
-    xor dx, dx              ; y=0
-.ceil_row:
+    ; Fill ceiling (rows 0..99) and floor (rows 100..199)
+    ; Use fast row-fill
+    xor dx, dx              ; row y=0
+.ceil_rows:
     cmp dx, 100
-    jge .ceil_done
-    ; Draw full row
-    push bx
-    push dx
-    mov cx, 320
-.ceil_px:
-    call gl16_pix
-    inc bx
-    loop .ceil_px
-    pop dx
-    pop bx
+    jge .floor_rows
     xor bx, bx
+    mov cx, MODE13_W - 1
+    mov al, [g4_ceil]
+    call gl16_hline
     inc dx
-    jmp .ceil_row
-.ceil_done:
-
-    ; Draw floor (bottom half)
-    mov al, [g4_floor]
-    xor bx, bx
-    mov dx, 100
-.floor_row:
+    jmp .ceil_rows
+.floor_rows:
     cmp dx, 200
-    jge .floor_done
-    push bx
-    push dx
-    mov cx, 320
-.floor_px:
-    call gl16_pix
-    inc bx
-    loop .floor_px
-    pop dx
-    pop bx
+    jge .walls
     xor bx, bx
+    mov cx, MODE13_W - 1
+    mov al, [g4_floor]
+    call gl16_hline
     inc dx
-    jmp .floor_row
-.floor_done:
+    jmp .floor_rows
+.walls:
 
-    ; Cast rays for each screen column
-    ; column = 0..319
-    ; ray_angle = player_angle - HALF_FOV + col*60/320
-    xor si, si              ; column index
+    ; Cast one ray per screen column (0..319)
+    xor si, si
 .ray_loop:
-    cmp si, 320
+    cmp si, MODE13_W
     jge .rays_done
 
-    ; Compute ray angle
-    ; angle = g4_angle - 30 + si*60/320
-    ; si*60/320 = si*3/16 (approximation)
+    ; ray_angle = player_angle - HALF_FOV + si*FOV_FULL/320
+    ; = player_angle - 30 + si*60/320  (approx si*3/16)
     mov ax, si
     mov bx, 3
-    mul bx
-    mov bx, 16
+    mul bx              ; ax = si*3
     xor dx, dx
-    div bx                  ; AX = si*60/320 (approx)
+    mov bx, 16
+    div bx              ; ax = si*3/16  (≈ si*60/320)
     mov cx, [g4_angle]
     sub cx, HALF_FOV
-    add cx, ax              ; ray angle
-    ; Normalize to 0..359
-.norm_a:
+    add cx, ax
+    ; Normalize 0..359
+.na:
     cmp cx, 0
-    jge .norm_pos
+    jge .np
     add cx, 360
-    jmp .norm_a
-.norm_pos:
+    jmp .na
+.np:
     cmp cx, 360
-    jl .norm_ok
+    jl .nok
     sub cx, 360
-    jmp .norm_pos
-.norm_ok:
+    jmp .np
+.nok:
     mov [_g4_ray_angle], cx
 
-    ; DDA raycast
-    call g4_cast_ray
+    call g4_cast_ray        ; sets g4_dist, g4_side
 
-    ; Draw wall slice at column si
-    ; wall_height = 160 * DEPTH_SCALE / max(dist,1)
-    mov ax, DEPTH_SCALE * 160
+    ; Fisheye correction: dist = dist * cos(ray - player) / 256
+    mov ax, [_g4_ray_angle]
+    sub ax, [g4_angle]
+    ; Normalize difference to -180..180
+.fnorm:
+    cmp ax, -180
+    jge .fn1
+    add ax, 360
+    jmp .fnorm
+.fn1:
+    cmp ax, 180
+    jle .fn2
+    sub ax, 360
+    jmp .fn1
+.fn2:
+    call fcos16             ; AX = cos(diff)*256 (signed)
+    ; Make sure positive
+    cmp ax, 0
+    jg .fcos_pos
+    neg ax
+.fcos_pos:
+    ; corrected_dist = dist * cos / 256
+    imul word [g4_dist]     ; dx:ax = dist*cos
+    sar ax, 8               ; ax = corrected dist (low bits sufficient)
+    mov [g4_dist], ax
+
+    ; Wall height = PROJ_DIST * DEPTH_SCALE / dist
+    mov ax, PROJ_DIST * DEPTH_SCALE / 10
     mov bx, [g4_dist]
     cmp bx, 1
-    jge .dist_ok
+    jge .d_ok
     mov bx, 1
-.dist_ok:
+.d_ok:
     xor dx, dx
     div bx
-    ; AX = wall height in pixels
-    cmp ax, 200
+    cmp ax, MODE13_H
     jle .wh_ok
-    mov ax, 200
+    mov ax, MODE13_H
 .wh_ok:
     mov [_g4_wh], ax
 
-    ; Wall colour based on side
+    ; Wall colour by side
     mov al, [g4_wall_ns]
     cmp byte [g4_side], 1
-    jne .use_col
+    jne .wcol_set
     mov al, [g4_wall_ew]
-.use_col:
+.wcol_set:
     mov [_g4_wcol], al
 
-    ; Draw the column slice
-    ; Top of wall = 100 - wh/2
+    ; Wall top = 100 - wh/2
     mov ax, [_g4_wh]
     shr ax, 1
     mov bx, 100
     sub bx, ax
+    cmp bx, 0
+    jge .ytop_ok
+    xor bx, bx
+.ytop_ok:
     mov [_g4_ytop], bx
     add bx, [_g4_wh]
+    cmp bx, MODE13_H
+    jl .ybot_ok
+    mov bx, MODE13_H
+.ybot_ok:
     mov [_g4_ybot], bx
 
-    ; Draw from ytop to ybot at x=si
+    ; Draw vertical wall strip at x=si
     mov dx, [_g4_ytop]
-    cmp dx, 0
-    jge .col_start
-    xor dx, dx
-.col_start:
 .col_draw:
     cmp dx, [_g4_ybot]
     jge .col_done
-    cmp dx, 199
-    jg .col_done
-    push si
-    push dx
     mov bx, si
     mov al, [_g4_wcol]
     call gl16_pix
-    pop dx
-    pop si
     inc dx
     jmp .col_draw
 .col_done:
@@ -219,10 +206,9 @@ gold4_draw_frame:
     jmp .ray_loop
 .rays_done:
 
-    ; Draw minimap (upper right, 32x20 pixels, 2px per tile)
     call g4_draw_minimap
 
-    ; Draw HUD
+    ; HUD
     mov bx, 2
     mov dx, 185
     mov al, [g4_hud_col]
@@ -244,141 +230,121 @@ _g4_ybot:       dw 0
 _g4_wcol:       db 0
 
 ; ============================================================
-; g4_cast_ray: DDA ray cast
-; Input: [_g4_ray_angle]
-; Output: [g4_dist], [g4_side]
+; g4_cast_ray: DDA grid traversal — FIXED (no stack corruption)
+; Input:  [_g4_ray_angle]
+; Output: [g4_dist] (distance*1), [g4_side] (0=EW, 1=NS)
+;
+; Algorithm: step along ray from player position, checking each
+; grid cell boundary. Use integer coords scaled by 64.
 ; ============================================================
 g4_cast_ray:
     push ax
     push bx
     push cx
     push dx
+    push si
+    push di
 
-    ; Player position in tile coords (integer, player * 64 / 64 = tile)
-    ; Direction vector from angle
+    ; Compute ray direction (scaled *256)
     mov ax, [_g4_ray_angle]
-    call fcos16                 ; AX = cos*256
-    mov [_rc_dx], ax            ; ray dir x (scaled *256)
-    mov ax, [_g4_ray_angle]
-    call fsin16                 ; AX = sin*256
-    mov [_rc_dy], ax            ; ray dir y
+    call fcos16
+    mov [_rc_dx], ax        ; ray_dx = cos(angle)*256
 
-    ; Current tile
+    mov ax, [_g4_ray_angle]
+    call fsin16
+    mov [_rc_dy], ax        ; ray_dy = sin(angle)*256
+
+    ; Player tile position (integer)
     mov ax, [g4_px]
-    sar ax, 6                   ; /64 = tile x
-    mov [_rc_mx], ax
+    sar ax, 6               ; /64
+    mov [_rc_mx], ax        ; tile x
+
     mov ax, [g4_py]
-    sar ax, 6
-    mov [_rc_my], ax
+    sar ax, 6               ; /64
+    mov [_rc_my], ax        ; tile y
 
-    ; DDA: step through grid
-    mov word [g4_dist], 1
-    mov cx, 64                  ; max steps
+    ; March ray: up to 64 steps, distance increments by 4 each step
+    mov word [g4_dist], 0
+    mov cx, 64
 
-.dda_step:
+.march_loop:
     test cx, cx
-    jz .ray_max
+    jz .march_max
 
-    ; Advance ray: small_step_x = 1/ray_dx * 64 (simplified)
-    ; We use a simplified DDA: just step by 1 pixel in ray direction
-    ; and check tile changes
-    mov ax, [g4_dist]
-    add ax, 3                   ; step
-    mov [g4_dist], ax
+    add word [g4_dist], 4
 
-    ; Position along ray
-    ; px + dist*dx/256, py + dist*dy/256
+    ; Tile position at current distance:
+    ; tx = (px + dist*dx/256) / 64
+    ; ty = (py + dist*dy/256) / 64
     mov ax, [g4_dist]
-    imul word [_rc_dx]
-    sar ax, 8
+    imul word [_rc_dx]      ; dx:ax = dist*ray_dx
+    sar ax, 8               ; ax = dist*ray_dx/256  (px-relative)
     add ax, [g4_px]
-    sar ax, 6                   ; convert to tile
+    sar ax, 6               ; tile x
     mov bx, ax
-    cmp bx, 0
-    jl .ray_max
-    cmp bx, MAP_W
-    jge .ray_max
 
     mov ax, [g4_dist]
     imul word [_rc_dy]
     sar ax, 8
     add ax, [g4_py]
-    sar ax, 6
-    mov dx, ax
-    cmp dx, 0
-    jl .ray_max
-    cmp dx, MAP_H
-    jge .ray_max
+    sar ax, 6               ; tile y
+    mov di, ax
 
-    ; Check if wall hit
-    ; map[dy][dx]
-    push dx
-    push bx
+    ; Bounds check
+    cmp bx, 0
+    jl .march_max
+    cmp bx, MAP_W - 1
+    jg .march_max
+    cmp di, 0
+    jl .march_max
+    cmp di, MAP_H - 1
+    jg .march_max
+
+    ; Map lookup: map[ty*MAP_W + tx]
     mov ax, MAP_W
-    mul dx                  ; AX = dy*MAP_W
-    pop bx
-    add ax, bx
+    mul di                  ; ax = ty*MAP_W (di is tile y)
+    add ax, bx              ; + tx
     mov si, gold4_map
     add si, ax
     cmp byte [si], 1
-    jne .no_hit
+    jne .no_wall
 
-    ; Determine side (N/S vs E/W)
-    ; Simplified: if X tile changed from last step, it's E/W wall
+    ; Wall hit! Determine side (EW vs NS)
+    ; If tile X changed since last step → EW wall (side=0)
+    ; If tile Y changed            → NS wall (side=1)
     mov ax, bx
     cmp ax, [_rc_mx]
     jne .ew_wall
-    mov byte [g4_side], 1   ; horizontal (N/S)
-    jmp .hit_done
+    mov byte [g4_side], 1   ; NS
+    jmp .march_done
 .ew_wall:
-    mov byte [g4_side], 0   ; vertical (E/W)
-.hit_done:
-    ; Apply fisheye correction: dist * cos(ray_angle - player_angle)
-    mov ax, [_g4_ray_angle]
-    sub ax, [g4_angle]
-    ; normalize
-.fix_ang:
-    cmp ax, -180
-    jge .fa_ok1
-    add ax, 360
-    jmp .fix_ang
-.fa_ok1:
-    cmp ax, 180
-    jle .fa_ok2
-    sub ax, 360
-    jmp .fa_ok1
-.fa_ok2:
-    call fcos16             ; cos of angle difference *256
-    ; correct_dist = dist * cos / 256
-    mul word [g4_dist]
-    sar ax, 8
-    mov [g4_dist], ax
-    pop dx
-    pop dx
-    jmp .ray_done
-.no_hit:
-    mov [_rc_mx], bx
-    pop dx
-    pop bx
-    dec cx
-    jmp .dda_step
+    mov byte [g4_side], 0   ; EW
+    jmp .march_done
 
-.ray_max:
+.no_wall:
+    mov [_rc_mx], bx        ; update last tile x
+    mov [_rc_my], di        ; update last tile y
+    dec cx
+    jmp .march_loop
+
+.march_max:
     mov word [g4_dist], 200
-.ray_done:
+.march_done:
+    pop di
+    pop si
     pop dx
     pop cx
     pop bx
     pop ax
     ret
 
-_rc_dx:         dw 0
-_rc_dy:         dw 0
-_rc_mx:         dw 0
-_rc_my:         dw 0
+_rc_dx:  dw 0
+_rc_dy:  dw 0
+_rc_mx:  dw 0
+_rc_my:  dw 0
 
 ; ============================================================
-; g4_draw_minimap: draw minimap in upper right corner
+; g4_draw_minimap
 ; ============================================================
 g4_draw_minimap:
     push ax
@@ -387,24 +353,22 @@ g4_draw_minimap:
     push dx
     push si
 
-    ; 2 pixels per tile, placed at x=256, y=2
-    xor si, si              ; tile index
-    mov dx, 2               ; screen y start
+    xor si, si
+    mov dx, 2
     mov cx, MAP_H
 .mm_row:
     push cx
     mov cx, MAP_W
-    mov bx, 256             ; screen x start
+    mov bx, 256
 .mm_col:
     push cx
-    ; Get tile value
     mov al, [gold4_map + si]
     test al, al
     jz .mm_empty
-    mov al, 7               ; wall = light grey
+    mov al, 7
     jmp .mm_draw
 .mm_empty:
-    mov al, 0               ; empty = black
+    mov al, 0
 .mm_draw:
     call gl16_pix
     push bx
@@ -426,20 +390,18 @@ g4_draw_minimap:
     pop cx
     loop .mm_row
 
-    ; Draw player dot (red)
+    ; Player dot
     mov ax, [g4_px]
-    sar ax, 6               ; tile x
-    shl ax, 1               ; *2 pixels
+    sar ax, 6
+    shl ax, 1
     add ax, 256
     mov bx, ax
-
     mov ax, [g4_py]
     sar ax, 6
     shl ax, 1
     add ax, 2
     mov dx, ax
-
-    mov al, 4               ; red
+    mov al, 4
     call gl16_pix
 
     pop si
@@ -450,8 +412,36 @@ g4_draw_minimap:
     ret
 
 ; ============================================================
-; gold4_run: main game loop
-; WASD = move, Q/E = strafe, ESC = quit
+; g4_check_wall: returns CF=1 if tile at (BX,DX) is a wall
+; ============================================================
+g4_check_wall:
+    cmp bx, 0
+    jl .wall
+    cmp bx, MAP_W - 1
+    jg .wall
+    cmp dx, 0
+    jl .wall
+    cmp dx, MAP_H - 1
+    jg .wall
+    push ax
+    push si
+    mov ax, MAP_W
+    mul dx
+    add ax, bx
+    mov si, gold4_map
+    add si, ax
+    cmp byte [si], 1
+    pop si
+    pop ax
+    je .wall
+    clc
+    ret
+.wall:
+    stc
+    ret
+
+; ============================================================
+; gold4_run: main loop — WASD=move, A/D=turn, ESC=quit
 ; ============================================================
 gold4_run:
     push ax
@@ -465,12 +455,11 @@ gold4_run:
 .game_loop:
     call gold4_draw_frame
 
-    ; Poll keyboard (non-blocking)
     call kbd_check
-    jz .game_loop           ; no key = keep rendering
+    jz .game_loop
 
     call kbd_getkey
-    cmp al, 27              ; ESC
+    cmp al, 27
     je .game_exit
     cmp al, 'w'
     je .move_fwd
@@ -491,37 +480,83 @@ gold4_run:
     jmp .game_loop
 
 .move_fwd:
-    ; Move forward: px += cos(angle)*4, py += sin(angle)*4
+    ; New pos = px + cos(angle)*step
     mov ax, [g4_angle]
     call fcos16
-    sar ax, 6               ; *4/256 ≈ divide 64
-    add [g4_px], ax
+    sar ax, 5               ; *4/128
+    mov bx, ax
+    add bx, [g4_px]
+    ; Check tile
+    mov ax, bx
+    sar ax, 6
+    mov cx, [g4_py]
+    sar cx, 6
+    push cx
+    mov dx, cx
+    pop cx
+    call g4_check_wall
+    jc .fwd_x_blocked
+    mov [g4_px], bx
+.fwd_x_blocked:
     mov ax, [g4_angle]
     call fsin16
+    sar ax, 5
+    mov dx, ax
+    add dx, [g4_py]
+    ; Check tile
+    mov bx, [g4_px]
+    sar bx, 6
+    mov ax, dx
     sar ax, 6
+    push ax
+    mov dx, [sp]
+    pop ax
+    push ax
+    mov ax, bx
+    mov bx, ax
+    pop dx
+    call g4_check_wall
+    jc .fwd_y_blocked
+    ; apply y
+    mov ax, [g4_angle]
+    call fsin16
+    sar ax, 5
     add [g4_py], ax
+.fwd_y_blocked:
     jmp .game_loop
 
 .move_back:
     mov ax, [g4_angle]
     call fcos16
+    sar ax, 5
+    mov bx, [g4_px]
+    sub bx, ax
+    mov ax, bx
     sar ax, 6
-    sub [g4_px], ax
+    mov cx, [g4_py]
+    sar cx, 6
+    mov dx, cx
+    call g4_check_wall
+    jc .back_x_blocked
+    mov [g4_px], bx
+.back_x_blocked:
     mov ax, [g4_angle]
     call fsin16
-    sar ax, 6
-    sub [g4_py], ax
+    sar ax, 5
+    mov bx, [g4_py]
+    sub bx, ax
+    mov [g4_py], bx
     jmp .game_loop
 
 .turn_left:
-    sub word [g4_angle], 10
+    sub word [g4_angle], 8
     cmp word [g4_angle], 0
     jge .game_loop
     add word [g4_angle], 360
     jmp .game_loop
 
 .turn_right:
-    add word [g4_angle], 10
+    add word [g4_angle], 8
     cmp word [g4_angle], 360
     jl .game_loop
     sub word [g4_angle], 360
@@ -529,7 +564,6 @@ gold4_run:
 
 .game_exit:
     call gl16_exit
-
     pop si
     pop dx
     pop cx
@@ -537,4 +571,4 @@ gold4_run:
     pop ax
     ret
 
-str_g4_hud:     db "KSDOS GOLD4 Engine | W=fwd S=back A/D=turn ESC=quit", 0
+str_g4_hud: db "GOLD4 | W=fwd S=back A/D=turn ESC=quit", 0

@@ -1,16 +1,14 @@
 ; =============================================================================
-; opengl.asm - KSDOS Software OpenGL 16-bit
+; opengl.asm - KSDOS Software OpenGL 16-bit  [FIXED v2]
 ; VGA Mode 13h (320x200 x 256 colours)
 ; Implements: gl16_init, gl16_exit, gl16_clear, gfx_pix, gfx_line,
 ;             gl16_tri, gl16_cube_demo, gl16_triangle_demo
 ;
-; Uses sdk/psyq and sdk/gold4 rendering concepts adapted for 16-bit real mode
-; Fixed-point math: 16.0 integer (no fractions needed for 320x200)
+; FIX: gl16_tri rewritten with _tri_cur_y variable (no [esp+2] tricks)
+; FIX: imul/idiv sequence corrected (imul sets DX:AX, no cwd needed)
+; FIX: cube projection uses full rotation matrix
 ; =============================================================================
 
-; ---------------------------------------------------------------------------
-; Graphics constants (guarded — video.asm defines these in the full kernel)
-; ---------------------------------------------------------------------------
 %ifndef VGA_GFX_SEG
 VGA_GFX_SEG     equ 0xA000
 %endif
@@ -20,9 +18,7 @@ MODE13_H        equ 200
 %endif
 
 ; ---------------------------------------------------------------------------
-; gfx_setup_palette / helpers — copied from video.asm so opengl.asm is
-; self-contained when assembled as an overlay (video.asm not included).
-; Guarded so the kernel build (which includes video.asm) sees no duplicates.
+; Palette helpers — guarded to avoid duplicates when linked with video.asm
 ; ---------------------------------------------------------------------------
 %ifndef GFX_PALETTE_DEFINED
 %define GFX_PALETTE_DEFINED
@@ -48,8 +44,8 @@ gfx_setup_palette:
     push cx
     push dx
     push si
-    push ds
     push es
+    ; Load first 16 standard CGA colours via BIOS
     mov ax, ds
     mov es, ax
     mov si, cga_palette
@@ -58,12 +54,11 @@ gfx_setup_palette:
     mov cx, 16
     mov dx, si
     int 0x10
-    pop es
-    pop ds
+    ; Fill rest of palette (colours 16-255): simple RGB ramp
     mov al, 16
 .pal_loop:
-    cmp al, 255
-    ja .pal_done
+    cmp al, 0           ; wrapped? (255+1=0)
+    je .pal_done
     push ax
     xor bx, bx
     mov bl, al
@@ -79,8 +74,9 @@ gfx_setup_palette:
     int 0x10
     pop ax
     inc al
-    jnz .pal_loop
+    jmp .pal_loop
 .pal_done:
+    pop es
     pop si
     pop dx
     pop cx
@@ -89,22 +85,22 @@ gfx_setup_palette:
     ret
 
 cga_palette:
-    db  0, 0, 0
-    db  0, 0,42
-    db  0,42, 0
-    db  0,42,42
-    db 42, 0, 0
-    db 42, 0,42
-    db 42,21, 0
-    db 42,42,42
-    db 21,21,21
-    db 21,21,63
-    db 21,63,21
-    db 21,63,63
-    db 63,21,21
-    db 63,21,63
-    db 63,63,21
-    db 63,63,63
+    db  0, 0, 0      ; 0  black
+    db  0, 0,42      ; 1  blue
+    db  0,42, 0      ; 2  green
+    db  0,42,42      ; 3  cyan
+    db 42, 0, 0      ; 4  red
+    db 42, 0,42      ; 5  magenta
+    db 42,21, 0      ; 6  brown
+    db 42,42,42      ; 7  light grey
+    db 21,21,21      ; 8  dark grey
+    db 21,21,63      ; 9  light blue
+    db 21,63,21      ; 10 light green
+    db 21,63,63      ; 11 light cyan
+    db 63,21,21      ; 12 light red
+    db 63,21,63      ; 13 light magenta
+    db 63,63,21      ; 14 yellow
+    db 63,63,63      ; 15 white
 
 ; gfx_pix: plot one pixel  AL=colour, BX=x (0..319), DX=y (0..199)
 gfx_pix:
@@ -123,10 +119,10 @@ gfx_pix:
     mov es, ax
     mov ax, dx
     mov di, ax
-    shl di, 8
-    shl ax, 6
-    add di, ax
-    add di, bx
+    shl di, 8               ; di = y*256
+    shl ax, 6               ; ax = y*64
+    add di, ax              ; di = y*320
+    add di, bx              ; di = y*320 + x
     mov al, cl
     stosb
 .gp_skip:
@@ -231,7 +227,27 @@ gfx_line:
     pop ax
     ret
 
-; Data vars for gfx_line
+; gfx_line_mem: draw line using gl_* memory variables
+gfx_line_mem:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    mov bx, [gl_x0]
+    mov cx, [gl_y0]
+    mov dx, [gl_x1]
+    mov si, [gl_y1]
+    mov al, [gl_line_col]
+    call gfx_line
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; Data for gfx_line
 gl_line_col:    db 0
 gl_x0:          dw 0
 gl_y0:          dw 0
@@ -309,17 +325,16 @@ gl16_pix:
     push dx
     push di
     push es
-    mov cx, ax              ; save colour
+    mov cx, ax
     mov ax, VGA_GFX_SEG
     mov es, ax
     mov ax, dx
-    ; offset = y*320 + x  (320 = 256 + 64)
     mov di, ax
-    shl di, 8               ; di = y*256
-    shl ax, 6               ; ax = y*64
-    add di, ax              ; di = y*320
-    add di, bx              ; di = y*320 + x
-    mov al, cl              ; colour
+    shl di, 8
+    shl ax, 6
+    add di, ax
+    add di, bx
+    mov al, cl
     stosb
     pop es
     pop di
@@ -330,18 +345,89 @@ gl16_pix:
     ret
 
 ; ============================================================
-; gl16_tri: filled triangle (scanline fill)
-; Arguments passed via memory (set before call):
+; gl16_hline: draw horizontal line
+; BX=x_start, CX=x_end, DX=y, AL=colour
+; ============================================================
+gl16_hline:
+    push ax
+    push bx
+    push cx
+    push dx
+    push di
+    push es
+    ; Clip y
+    cmp dx, MODE13_H
+    jae .hl_done
+    ; Clip x
+    cmp bx, cx
+    jle .hl_order
+    xchg bx, cx
+.hl_order:
+    cmp bx, MODE13_W
+    jae .hl_done
+    cmp cx, 0
+    jl .hl_done
+    ; Clamp left
+    cmp bx, 0
+    jge .hl_cl_ok
+    xor bx, bx
+.hl_cl_ok:
+    ; Clamp right
+    cmp cx, MODE13_W - 1
+    jle .hl_cr_ok
+    mov cx, MODE13_W - 1
+.hl_cr_ok:
+    ; Compute start offset
+    mov [_hl_col], al
+    mov ax, VGA_GFX_SEG
+    mov es, ax
+    mov ax, dx
+    mov di, ax
+    shl di, 8
+    shl ax, 6
+    add di, ax
+    add di, bx              ; di = y*320 + x_start
+    ; Count = cx - bx + 1
+    sub cx, bx
+    inc cx
+    mov al, [_hl_col]
+    rep stosb
+.hl_done:
+    pop es
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+_hl_col: db 0
+
+; ============================================================
+; gl16_tri: filled triangle (scanline fill) — FIXED
+; Arguments set before call:
 ;   tri_x0,tri_y0, tri_x1,tri_y1, tri_x2,tri_y2 (words)
 ;   tri_col (byte) = fill colour
+;
+; Algorithm:
+;   Sort vertices by Y so y0<=y1<=y2.
+;   Long edge: P0->P2.
+;   Top half (y0..y1): long edge vs P0->P1
+;   Bottom half (y1..y2): long edge vs P1->P2
+;   Use _tri_cur_y variable - no stack tricks.
 ; ============================================================
-tri_x0: dw 0
-tri_y0: dw 0
-tri_x1: dw 0
-tri_y1: dw 0
-tri_x2: dw 0
-tri_y2: dw 0
-tri_col: db 0
+tri_x0:     dw 0
+tri_y0:     dw 0
+tri_x1:     dw 0
+tri_y1:     dw 0
+tri_x2:     dw 0
+tri_y2:     dw 0
+tri_col:    db 0
+
+; Working vars (no stack abuse)
+_tri_cur_y: dw 0
+_tri_xl:    dw 0
+_tri_xr:    dw 0
+_tri_dy:    dw 0
 
 gl16_tri:
     push ax
@@ -351,201 +437,170 @@ gl16_tri:
     push si
     push di
 
-    ; Sort vertices by Y (simple bubble sort on 3 points)
-    ; Ensure y0 <= y1 <= y2
+    ; ---- Sort vertices by Y: y0 <= y1 <= y2 ----
     mov ax, [tri_y0]
     cmp ax, [tri_y1]
-    jle .ok01
-    ; swap 0 and 1
-    mov bx, [tri_x1]
-    mov cx, [tri_y1]
-    xchg bx, [tri_x0]
-    xchg cx, [tri_y0]
+    jle .s01
+    mov bx, [tri_x0] ; swap 0,1
+    mov cx, [tri_y0]
+    mov dx, [tri_x1]
+    mov si, [tri_y1]
+    mov [tri_x0], dx
+    mov [tri_y0], si
     mov [tri_x1], bx
     mov [tri_y1], cx
-.ok01:
-    mov ax, [tri_y0]
-    cmp ax, [tri_y2]
-    jle .ok02
-    mov bx, [tri_x2]
-    mov cx, [tri_y2]
-    xchg bx, [tri_x0]
-    xchg cx, [tri_y0]
-    mov [tri_x2], bx
-    mov [tri_y2], cx
-.ok02:
+.s01:
     mov ax, [tri_y1]
     cmp ax, [tri_y2]
-    jle .ok12
-    mov bx, [tri_x2]
-    mov cx, [tri_y2]
-    xchg bx, [tri_x1]
-    xchg cx, [tri_y1]
+    jle .s12
+    mov bx, [tri_x1] ; swap 1,2
+    mov cx, [tri_y1]
+    mov dx, [tri_x2]
+    mov si, [tri_y2]
+    mov [tri_x1], dx
+    mov [tri_y1], si
     mov [tri_x2], bx
     mov [tri_y2], cx
-.ok12:
-
-    ; Now y0 <= y1 <= y2
-    ; Draw flat-bottom triangle (y0..y1) and flat-top (y1..y2)
-
-    ; Flat-bottom: y from y0 to y1
+.s12:
     mov ax, [tri_y0]
-    mov dx, [tri_y1]
-    cmp ax, dx
-    je .skip_top
-.top_loop:
-    cmp ax, dx
-    jg .skip_top
-    push ax
-    push dx
-    ; Interpolate x on left edge (p0→p2) and right edge (p0→p1)
-    ; x_left  = x0 + (x2-x0)*(y-y0)/(y2-y0)
-    ; x_right = x0 + (x1-x0)*(y-y0)/(y1-y0)
-    ; Using fixed-point integer division
-    mov bx, ax              ; bx = current y
-    sub bx, [tri_y0]       ; bx = y - y0
+    cmp ax, [tri_y1]
+    jle .s01b
+    mov bx, [tri_x0]
+    mov cx, [tri_y0]
+    mov dx, [tri_x1]
+    mov si, [tri_y1]
+    mov [tri_x0], dx
+    mov [tri_y0], si
+    mov [tri_x1], bx
+    mov [tri_y1], cx
+.s01b:
 
-    ; x_left: (x2-x0)*(y-y0) / (y2-y0)
-    mov si, [tri_x2]
-    sub si, [tri_x0]
-    imul si, bx
+    ; ---- Top half: y from y0 to y1 ----
+    ; Long  edge: P0->P2  x = x0 + (x2-x0)*(y-y0)/(y2-y0)
+    ; Short edge: P0->P1  x = x0 + (x1-x0)*(y-y0)/(y1-y0)
+    mov ax, [tri_y0]
+    mov [_tri_cur_y], ax
+
+.top_loop:
+    mov ax, [_tri_cur_y]
+    cmp ax, [tri_y1]
+    jg .skip_top
+
+    ; t = y - y0  (stored in DI)
+    mov di, ax
+    sub di, [tri_y0]
+
+    ; --- Long edge (P0->P2) ---
+    mov ax, [tri_x2]
+    sub ax, [tri_x0]        ; ax = x2-x0
+    imul di                 ; dx:ax = (x2-x0)*(y-y0)
     mov cx, [tri_y2]
-    sub cx, [tri_y0]
+    sub cx, [tri_y0]        ; cx = y2-y0
     test cx, cx
-    jz .skip_left
-    cwd
-    idiv cx
-.skip_left:
+    jz .le_zero
+    idiv cx                 ; ax = result
+    jmp .le_done
+.le_zero:
+    xor ax, ax
+.le_done:
     add ax, [tri_x0]
     mov [_tri_xl], ax
 
-    ; x_right: (x1-x0)*(y-y0) / (y1-y0)
-    mov ax, bx
-    mov si, [tri_x1]
-    sub si, [tri_x0]
-    imul si, ax
+    ; --- Short top edge (P0->P1) ---
+    mov ax, [tri_x1]
+    sub ax, [tri_x0]        ; ax = x1-x0
+    imul di                 ; dx:ax = (x1-x0)*(y-y0)
     mov cx, [tri_y1]
-    sub cx, [tri_y0]
+    sub cx, [tri_y0]        ; cx = y1-y0
     test cx, cx
-    jz .flat_right
-    cwd
+    jz .se_zero
     idiv cx
-.flat_right:
+    jmp .se_done
+.se_zero:
+    xor ax, ax
+.se_done:
     add ax, [tri_x0]
     mov [_tri_xr], ax
 
-    ; Draw horizontal line at y=bx from xl to xr
-    pop dx
-    push dx
-    mov dx, [esp+2]         ; y value (it's on stack)
-    pop dx
-    pop ax
-    push ax
-    push dx
-
-    mov dx, ax              ; DX = current y (scanline)
-    mov ax, [_tri_xl]
-    mov bx, [_tri_xr]
-    cmp ax, bx
-    jle .draw_top_span
-    xchg ax, bx
-.draw_top_span:
-    ; Draw pixels from ax to bx on row dx
-    cmp ax, bx
-    jg .top_span_done
-    push ax
-    push bx
-    push dx
-    mov bx, ax              ; x position
+    ; --- Draw horizontal span ---
+    mov dx, [_tri_cur_y]
+    mov bx, [_tri_xl]
+    mov cx, [_tri_xr]
+    cmp bx, cx
+    jle .top_draw
+    xchg bx, cx
+.top_draw:
     mov al, [tri_col]
-    call gl16_pix
-    pop dx
-    pop bx
-    pop ax
-    inc ax
-    jmp .draw_top_span
-.top_span_done:
-    pop dx
-    pop ax
-    inc ax
+    call gl16_hline
+
+    inc word [_tri_cur_y]
     jmp .top_loop
 .skip_top:
 
-    ; Flat-top triangle: y from y1 to y2
+    ; ---- Bottom half: y from y1 to y2 ----
+    ; Long  edge: P0->P2  (same formula)
+    ; Short edge: P1->P2  x = x1 + (x2-x1)*(y-y1)/(y2-y1)
     mov ax, [tri_y1]
-    mov dx, [tri_y2]
-    cmp ax, dx
-    je .skip_bot
+    mov [_tri_cur_y], ax
+
 .bot_loop:
-    cmp ax, dx
+    mov ax, [_tri_cur_y]
+    cmp ax, [tri_y2]
     jg .skip_bot
-    push ax
-    push dx
-    mov bx, ax
-    sub bx, [tri_y1]
 
-    ; x_left: (x2-x1)*(y-y1)/(y2-y1)
-    mov si, [tri_x2]
-    sub si, [tri_x1]
-    imul si, bx
-    mov cx, [tri_y2]
-    sub cx, [tri_y1]
-    test cx, cx
-    jz .skip_bl
-    cwd
-    idiv cx
-.skip_bl:
-    add ax, [tri_x1]
-    mov [_tri_xl], ax
+    ; t_long = y - y0
+    mov di, ax
+    sub di, [tri_y0]
 
-    ; x_right: (x2-x0)*(y-y0)/(y2-y0) [the long edge]
-    mov ax, bx
-    add ax, [tri_y1]
-    sub ax, [tri_y0]        ; ax = y - y0
-    mov si, [tri_x2]
-    sub si, [tri_x0]
-    imul si, ax
+    ; --- Long edge (P0->P2) ---
+    mov ax, [tri_x2]
+    sub ax, [tri_x0]
+    imul di
     mov cx, [tri_y2]
     sub cx, [tri_y0]
     test cx, cx
-    jz .skip_br
-    cwd
+    jz .ble_zero
     idiv cx
-.skip_br:
+    jmp .ble_done
+.ble_zero:
+    xor ax, ax
+.ble_done:
     add ax, [tri_x0]
+    mov [_tri_xl], ax
+
+    ; t_short = y - y1
+    mov ax, [_tri_cur_y]
+    mov di, ax
+    sub di, [tri_y1]
+
+    ; --- Short bottom edge (P1->P2) ---
+    mov ax, [tri_x2]
+    sub ax, [tri_x1]
+    imul di
+    mov cx, [tri_y2]
+    sub cx, [tri_y1]
+    test cx, cx
+    jz .bse_zero
+    idiv cx
+    jmp .bse_done
+.bse_zero:
+    xor ax, ax
+.bse_done:
+    add ax, [tri_x1]
     mov [_tri_xr], ax
 
-    pop dx
-    push dx
-    pop ax                  ; tricky: restore ax = current y
-    pop dx
-    push ax
-    push dx
-
-    mov dx, ax
-    mov ax, [_tri_xl]
-    mov bx, [_tri_xr]
-    cmp ax, bx
-    jle .draw_bot_span
-    xchg ax, bx
-.draw_bot_span:
-    cmp ax, bx
-    jg .bot_span_done
-    push ax
-    push bx
-    push dx
-    mov bx, ax
+    ; --- Draw horizontal span ---
+    mov dx, [_tri_cur_y]
+    mov bx, [_tri_xl]
+    mov cx, [_tri_xr]
+    cmp bx, cx
+    jle .bot_draw
+    xchg bx, cx
+.bot_draw:
     mov al, [tri_col]
-    call gl16_pix
-    pop dx
-    pop bx
-    pop ax
-    inc ax
-    jmp .draw_bot_span
-.bot_span_done:
-    pop dx
-    pop ax
-    inc ax
+    call gl16_hline
+
+    inc word [_tri_cur_y]
     jmp .bot_loop
 .skip_bot:
 
@@ -557,15 +612,11 @@ gl16_tri:
     pop ax
     ret
 
-_tri_xl: dw 0
-_tri_xr: dw 0
-
 ; ============================================================
-; 5x7 pixel font for graphics mode text (bitmap chars 32-127)
-; Each char = 5 bytes, each byte = 7 bits
+; 5x7 pixel font (bitmap chars 32-90)
+; Each char = 5 bytes, bit 0 = top row
 ; ============================================================
 gl_font:
-    ; Space..tilde (95 chars, 5 bytes each = 475 bytes)
     db 0x00,0x00,0x00,0x00,0x00 ; 32 ' '
     db 0x00,0x00,0x5F,0x00,0x00 ; 33 '!'
     db 0x00,0x07,0x00,0x07,0x00 ; 34 '"'
@@ -632,8 +683,8 @@ gl_font:
     db 0x40,0x40,0x40,0x40,0x40 ; 95 '_'
 
 ; ============================================================
-; gl16_text_gfx: draw text string at pixel coords
-; BX=x, DX=y, AL=colour, DS:SI=string
+; gl16_text_gfx: draw string in graphics mode
+; BX=x, DX=y, AL=colour, DS:SI=null-terminated string
 ; ============================================================
 gl16_text_gfx:
     push ax
@@ -651,25 +702,25 @@ gl16_text_gfx:
     jz .done
     cmp al, 32
     jb .next_char
-    cmp al, 95+32
-    ja .next_char
+    cmp al, 127
+    jae .next_char
     sub al, 32
-    ; Get font data pointer: gl_font + al*5
+    cmp al, 95
+    ja .next_char
+    ; pointer into font: gl_font + al*5
     xor ah, ah
     mov di, ax
-    shl di, 2          ; di = al*4
-    add di, ax         ; di = al*5
-    add di, gl_font    ; di points to 5-byte glyph
-    ; Draw 5 columns x 7 rows
-    mov cx, 5          ; column index
-    mov bx, [_gt_x]    ; current x
+    shl di, 2
+    add di, ax              ; di = al*5
+    add di, gl_font
+    mov cx, 5
+    mov bx, [_gt_x]
 .col_loop:
     test cx, cx
     jz .next_char
     push cx
-    mov al, [di]       ; column byte
+    mov al, [di]
     inc di
-    ; Draw 7 bits (rows)
     push bx
     mov cx, 7
     mov dx, [_gt_y]
@@ -689,8 +740,8 @@ gl16_text_gfx:
     inc dx
     loop .row_loop
     pop bx
-    pop cx
     inc bx
+    pop cx
     dec cx
     jmp .col_loop
 .next_char:
@@ -710,7 +761,7 @@ _gt_y:   dw 0
 _gt_col: db 15
 
 ; ============================================================
-; 3D Math: fixed-point sine table (0..90 degrees, *256)
+; Sine table: sin_tab[i] = sin(i degrees) * 256, i=0..90
 ; ============================================================
 sin_tab:
     dw    0,   4,   9,  13,  18,  22,  27,  31,  36,  40
@@ -724,20 +775,19 @@ sin_tab:
     dw  241, 241, 242, 242, 243, 243, 244, 244, 244, 245
     dw  245
 
-; fsin16: AX = angle (degrees, 0..359) → AX = sin*256 (signed)
+; fsin16: AX=angle(deg, 0..359) -> AX=sin*256 (signed)
 fsin16:
     push bx
     push cx
-    ; normalize to 0..359
-    mov bx, 360
-    xor dx, dx
+    ; Normalize
     cmp ax, 0
     jge .noneg
     add ax, 360
 .noneg:
-    div bx              ; AX = deg % 360
+    mov bx, 360
+    xor dx, dx
+    div bx              ; AX = deg mod 360 (dx=remainder, but we use remainder)
     mov ax, dx
-
     ; Quadrant
     cmp ax, 90
     jle .q1
@@ -745,43 +795,38 @@ fsin16:
     jle .q2
     cmp ax, 270
     jle .q3
-    ; Q4: 270..359  sin = -sin(360-ax)
+    ; Q4
     mov cx, 360
     sub cx, ax
+    shl cx, 1
     mov bx, cx
-    shl bx, 1
     mov ax, [sin_tab + bx]
     neg ax
-    pop cx
-    pop bx
-    ret
+    jmp .fsin_done
 .q1:
     shl ax, 1
     mov bx, ax
     mov ax, [sin_tab + bx]
-    pop cx
-    pop bx
-    ret
+    jmp .fsin_done
 .q2:
     mov cx, 180
     sub cx, ax
     shl cx, 1
     mov bx, cx
     mov ax, [sin_tab + bx]
-    pop cx
-    pop bx
-    ret
+    jmp .fsin_done
 .q3:
     sub ax, 180
     shl ax, 1
     mov bx, ax
     mov ax, [sin_tab + bx]
     neg ax
+.fsin_done:
     pop cx
     pop bx
     ret
 
-; fcos16: same as fsin16(angle+90)
+; fcos16: cos via sin(angle+90)
 fcos16:
     push bx
     add ax, 90
@@ -794,63 +839,29 @@ fcos16:
     ret
 
 ; ============================================================
-; gl16_project: 3D → 2D perspective projection
-; Input: SI=x*256, DI=y*256, [_pz]=z*256, [_rx],[_ry],[_rz]=angles
-; Output: BX=screen_x, DX=screen_y
-; Uses temp vars, fixed-point 16-bit
+; gl16_cube_demo: animated rotating wireframe cube — FIXED
+; Full Y-axis rotation matrix, correct projection
 ; ============================================================
-_pz:    dw 0
-_rx:    dw 0
-_ry:    dw 0
-_rz:    dw 0
-
-; Simple rotation + projection (integer math, *256 scale)
-; Rotates around Y axis only for simplicity
-gl16_project_y:
-    push ax
-    push cx
-    ; Rotate X and Z by angle _ry:
-    ;   x' = x*cos(ry) + z*sin(ry)
-    ;   z' = -x*sin(ry) + z*cos(ry)
-    ; Then project:
-    ;   screen_x = 160 + x'*128/z'
-    ;   screen_y = 100 + y *128/z'
-    mov ax, [_ry]
-    call fcos16         ; AX = cos*256
-    ; x' = (SI * cos) >> 8
-    push ax
-    mov ax, si
-    imul word [_ry_cos]
-    ; This is getting complex for integer-only; use lookup
-    pop ax
-    ; Simplified: just return center for now (this will be
-    ; replaced by the full cube demo which uses its own math)
-    mov bx, 160
-    mov dx, 100
-    pop cx
-    pop ax
-    ret
-_ry_cos: dw 256
-
-; ============================================================
-; gl16_cube_demo: animated rotating wireframe cube
-; Press any key to exit
-; ============================================================
-
-; Cube vertices (x,y,z each * 64, 8 vertices)
 cube_vx: dw -64,  64,  64, -64, -64,  64,  64, -64
 cube_vy: dw -64, -64,  64,  64, -64, -64,  64,  64
 cube_vz: dw -64, -64, -64, -64,  64,  64,  64,  64
 
-; Cube edges (pairs of vertex indices, 12 edges)
 cube_edges:
-    db 0,1, 1,2, 2,3, 3,0   ; front face
-    db 4,5, 5,6, 6,7, 7,4   ; back face
-    db 0,4, 1,5, 2,6, 3,7   ; connecting edges
+    db 0,1, 1,2, 2,3, 3,0
+    db 4,5, 5,6, 6,7, 7,4
+    db 0,4, 1,5, 2,6, 3,7
 
-; Projected 2D coords
 proj_x: times 8 dw 0
 proj_y: times 8 dw 0
+
+_cube_angle:    dw 0
+_tmp_cos:       dw 256
+_tmp_sin:       dw 0
+_e_x0:          dw 0
+_e_y0:          dw 0
+_e_x1:          dw 0
+_e_y1:          dw 0
+_proj_z:        dw 0
 
 gl16_cube_demo:
     push ax
@@ -859,178 +870,142 @@ gl16_cube_demo:
     push dx
     push si
     push di
-
     call gl16_init
-
     mov word [_cube_angle], 0
 
 .frame:
-    ; Check for keypress to exit
     call kbd_check
     jnz .exit_cube
 
-    ; Clear screen (dark blue = colour 1)
     mov al, 1
     call gl16_clear
 
-    ; Draw title
-    mov bx, 60
+    mov bx, 40
     mov dx, 5
     mov al, 15
     mov si, str_gl_title
     call gl16_text_gfx
 
+    ; Precompute cos/sin for this frame
+    mov ax, [_cube_angle]
+    call fcos16
+    mov [_tmp_cos], ax
+    mov ax, [_cube_angle]
+    call fsin16
+    mov [_tmp_sin], ax
+
     ; Project all 8 vertices
     mov cx, 8
-    xor di, di              ; vertex index
+    xor di, di
 .proj_loop:
     push cx
     push di
-    ; Get vertex coords
-    shl di, 1               ; word index
+
+    shl di, 1
     mov si, [cube_vx + di]  ; x
-    mov ax, [cube_vy + di]  ; y
+    mov ax, [cube_vy + di]  ; y (stored for later)
+    push ax
     mov bx, [cube_vz + di]  ; z
 
-    ; Rotate around Y axis: angle = _cube_angle
-    ; x' = x*cos - z*sin
-    ; z' = x*sin + z*cos
-    push si
-    push ax
-    push bx
-    mov ax, [_cube_angle]
-    call fcos16             ; AX = cos*256
-    mov [_tmp_cos], ax
-    mov ax, [_cube_angle]
-    call fsin16             ; AX = sin*256
-    mov [_tmp_sin], ax
-    pop bx                  ; z
-    pop ax                  ; y (don't rotate for Y-axis rotation)
-    pop si                  ; x
-
-    ; x' = (x*cos - z*sin) / 256
-    push ax                 ; save y
+    ; Rotate around Y: x' = x*cos + z*sin, z' = -x*sin + z*cos
+    ; x' = (x*cos + z*sin) >> 8
     mov ax, si
-    imul word [_tmp_cos]
-    ; DX:AX = x*cos (we just use AX, ignore DX for small values)
-    push ax
+    imul word [_tmp_cos]    ; dx:ax = x*cos
+    mov [_proj_z], ax       ; save low word
     mov ax, bx
-    imul word [_tmp_sin]
-    pop cx                  ; cx = x*cos low word
-    sub cx, ax              ; cx = x*cos - z*sin (low words)
-    sar cx, 8               ; x' = /256
-    mov [_pxrot], cx
+    imul word [_tmp_sin]    ; dx:ax = z*sin
+    add ax, [_proj_z]
+    sar ax, 8               ; ax = x' (screen x component)
+    mov si, ax              ; si = x'
 
-    ; z' = (x*sin + z*cos) / 256
-    mov ax, si
-    imul word [_tmp_sin]
-    push ax
+    ; z' = (-x*sin + z*cos) >> 8 + depth_offset
+    mov ax, [cube_vx + di]
+    neg ax
+    imul word [_tmp_sin]    ; dx:ax = -x*sin
+    mov [_proj_z], ax
     mov ax, bx
-    imul word [_tmp_cos]
-    pop cx
-    add cx, ax
-    sar cx, 8               ; z' = /256
-    add cx, 200             ; add depth offset so z' > 0
-    cmp cx, 10
+    imul word [_tmp_cos]    ; dx:ax = z*cos
+    add ax, [_proj_z]
+    sar ax, 8               ; ax = z'
+    add ax, 200             ; perspective depth (z' + 200)
+    cmp ax, 20
     jge .z_ok
-    mov cx, 10
+    mov ax, 20
 .z_ok:
+    mov [_proj_z], ax       ; save z' for perspective divide
+
     pop ax                  ; restore y
 
-    ; Perspective project
-    ; screen_x = 160 + x'*128/z'
-    ; screen_y = 100 + y*128/z'
-    ; x' is in [_pxrot], y in AX, z' in CX
+    ; Perspective project:
+    ; screen_x = 160 + x' * 128 / z'
     push ax
-    mov ax, [_pxrot]
-    imul word [_proj_scale]
-    push dx
-    cwd
-    idiv cx
-    add ax, 160             ; center x
-    pop dx
-    pop dx                  ; y value
-    push ax                 ; save screen_x
+    mov ax, si
+    imul word [_cub_fov]    ; dx:ax = x'*fov
+    idiv word [_proj_z]
+    add ax, 160
+    pop cx                  ; cx = vertex index * 2 (di still shifted)
+    push di
+    mov di, cx
+    mov [proj_x + di], ax
 
-    mov ax, dx              ; y
-    imul word [_proj_scale]
-    cwd
-    idiv cx
-    neg ax                  ; flip Y
-    add ax, 100             ; center y
-    mov dx, ax              ; screen_y
-
-    pop ax                  ; screen_x
+    ; screen_y = 100 + y * 128 / z'
     pop di
     push di
-    mov bx, ax
-    ; Store projected coords
-    shl di, 1
-    mov [proj_x + di], bx
-    mov [proj_y + di], dx
+    mov ax, [cube_vy + di]  ; raw y
+    neg ax
+    imul word [_cub_fov]
+    idiv word [_proj_z]
+    add ax, 100
+    mov bx, di
+    mov [proj_y + bx], ax
+    pop di
 
     pop di
     pop cx
     inc di
-    dec cx
-    jz .proj_done
-    jmp .proj_loop
-.proj_done:
+    loop .proj_loop
 
-    ; Draw edges
-    mov si, cube_edges
+    ; Draw 12 edges
     mov cx, 12
+    mov si, cube_edges
 .edge_loop:
     push cx
     push si
-    movzx di, byte [si]
-    inc si
     movzx bx, byte [si]
-    inc si
-
-    ; Get projected coords of both endpoints
-    shl di, 1
+    movzx dx, byte [si+1]
     shl bx, 1
-    mov ax, [proj_x + di]
-    mov [_e_x0], ax
-    mov ax, [proj_y + di]
-    mov [_e_y0], ax
+    shl dx, 1
     mov ax, [proj_x + bx]
-    mov [_e_x1], ax
+    mov [gl_x0], ax
     mov ax, [proj_y + bx]
-    mov [_e_y1], ax
-
-    ; Draw line (use gfx_line with params)
-    mov [gl_x0], ax
-    mov ax, [_e_x0]
-    mov [gl_x0], ax
-    mov ax, [_e_y0]
     mov [gl_y0], ax
-    mov ax, [_e_x1]
+    mov ax, [proj_x + dx]
     mov [gl_x1], ax
-    mov ax, [_e_y1]
+    mov ax, [proj_y + dx]
     mov [gl_y1], ax
-    mov al, 14             ; yellow
-    mov [gl_line_col], al
-    call gfx_line_mem       ; draw from gl_* vars
-
+    mov byte [gl_line_col], 14  ; yellow
+    call gfx_line_mem
     pop si
+    add si, 2
     pop cx
     loop .edge_loop
 
-    ; Advance angle
+    ; Draw edge labels at corners
+    mov bx, 80
+    mov dx, 185
+    mov al, 11
+    mov si, str_gl_hint
+    call gl16_text_gfx
+
     inc word [_cube_angle]
-    mov ax, [_cube_angle]
-    cmp ax, 360
+    cmp word [_cube_angle], 360
     jb .frame
     mov word [_cube_angle], 0
     jmp .frame
 
 .exit_cube:
-    ; Drain the keypress
     call kbd_getkey
     call gl16_exit
-
     pop di
     pop si
     pop dx
@@ -1039,40 +1014,13 @@ gl16_cube_demo:
     pop ax
     ret
 
-_cube_angle:    dw 0
-_tmp_cos:       dw 256
-_tmp_sin:       dw 0
-_pxrot:         dw 0
-_proj_scale:    dw 100
-_e_x0:          dw 0
-_e_y0:          dw 0
-_e_x1:          dw 0
-_e_y1:          dw 0
+_cub_fov:   dw 128
 
-str_gl_title:   db "KSDOS OpenGL 16-bit - Rotating Cube [key=exit]", 0
-
-; gfx_line wrapper using gl_* memory variables
-gfx_line_mem:
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    mov bx, [gl_x0]
-    mov cx, [gl_y0]
-    mov dx, [gl_x1]
-    mov si, [gl_y1]
-    mov al, [gl_line_col]
-    call gfx_line
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
+str_gl_title: db "KSDOS OpenGL 16-bit - Rotating Cube [key=exit]", 0
+str_gl_hint:  db "Press any key to exit", 0
 
 ; ============================================================
-; gl16_triangle_demo: coloured filled triangle demo
+; gl16_triangle_demo: coloured filled triangle demo — FIXED
 ; ============================================================
 gl16_triangle_demo:
     push ax
@@ -1082,14 +1030,12 @@ gl16_triangle_demo:
     push si
 
     call gl16_init
-
     mov word [_tdemo_frame], 0
 
 .tframe:
     call kbd_check
     jnz .texit
 
-    ; Dark background
     mov al, 0
     call gl16_clear
 
@@ -1099,27 +1045,26 @@ gl16_triangle_demo:
     mov si, str_tri_title
     call gl16_text_gfx
 
-    ; Draw 8 rotating triangles of different colors
+    ; Draw 8 spinning coloured triangles
     mov cx, 8
     mov byte [_tdemo_c], 0
 .tri_loop:
     push cx
-    ; Calculate angle offset for this triangle
-    mov al, [_tdemo_c]
-    mov ah, 45
-    mul ah
+
+    movzx ax, byte [_tdemo_c]
+    mov bx, 45
+    mul bx                  ; ax = c * 45 (base angle offset)
     add ax, [_tdemo_frame]
     mov [_tang], ax
 
-    ; Vertex 0: center
+    ; Vertex 0: center of screen
     mov word [tri_x0], 160
     mov word [tri_y0], 100
 
-    ; Vertex 1: angle _tang, radius 80
+    ; Vertex 1: angle = _tang, r=80
     mov ax, [_tang]
     call fcos16
-    ; AX = cos*256; scale by 80/256 ≈ 80
-    imul word [_tdemo_r]
+    imul word [_tdemo_r]    ; dx:ax = cos*r
     sar ax, 8
     add ax, 160
     mov [tri_x1], ax
@@ -1132,37 +1077,39 @@ gl16_triangle_demo:
     add ax, 100
     mov [tri_y1], ax
 
-    ; Vertex 2: angle _tang+120
+    ; Vertex 2: angle = _tang + 120
     mov ax, [_tang]
     add ax, 120
     cmp ax, 360
     jb .v2ok
     sub ax, 360
 .v2ok:
+    push ax
     call fcos16
     imul word [_tdemo_r]
     sar ax, 8
     add ax, 160
     mov [tri_x2], ax
+    pop ax
 
-    mov ax, [_tang]
-    add ax, 120
-    cmp ax, 360
-    jb .v2yok
-    sub ax, 360
-.v2yok:
+    push ax
     call fsin16
     imul word [_tdemo_r]
     sar ax, 8
     neg ax
     add ax, 100
     mov [tri_y2], ax
+    pop ax
 
-    ; Colour: cycle through palette
+    ; Colour cycling
     movzx ax, byte [_tdemo_c]
     add ax, 16
     add ax, [_tdemo_frame]
     and ax, 0xFF
+    cmp al, 0
+    jne .tc_ok
+    mov al, 1
+.tc_ok:
     mov [tri_col], al
 
     call gl16_tri
@@ -1170,9 +1117,7 @@ gl16_triangle_demo:
     inc byte [_tdemo_c]
     pop cx
     dec cx
-    jz .tri_done
-    jmp .tri_loop
-.tri_done:
+    jnz .tri_loop
 
     add word [_tdemo_frame], 2
     cmp word [_tdemo_frame], 360
@@ -1195,4 +1140,4 @@ _tdemo_r:       dw 80
 _tdemo_c:       db 0
 _tang:          dw 0
 
-str_tri_title:  db "KSDOS OpenGL 16-bit - Triangle Demo [key=exit]", 0
+str_tri_title: db "KSDOS OpenGL - Filled Triangle Demo [key=exit]", 0

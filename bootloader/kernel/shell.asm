@@ -216,6 +216,11 @@ cmd_table:
     dw cmd_s_MUSIC,   sh_MUSIC
     dw cmd_s_NET,     sh_NET
     dw cmd_s_INSTALL, sh_INSTALL
+    dw cmd_s_AI,      sh_AI
+    dw cmd_s_MATRIX,  sh_MATRIX
+    dw cmd_s_SYSINFO, sh_SYSINFO
+    dw cmd_s_CALC,    sh_CALC
+    dw cmd_s_COLOR,   sh_COLOR
     dw 0, 0             ; sentinel
 
 ; Command name strings (uppercase)
@@ -271,6 +276,11 @@ cmd_s_CSC:      db "CSC",      0
 cmd_s_MUSIC:    db "MUSIC",    0
 cmd_s_NET:      db "NET",      0
 cmd_s_INSTALL:  db "INSTALL",  0
+cmd_s_AI:       db "AI",       0
+cmd_s_MATRIX:   db "MATRIX",   0
+cmd_s_SYSINFO:  db "SYSINFO",  0
+cmd_s_CALC:     db "CALC",     0
+cmd_s_COLOR:    db "COLOR",    0
 
 sh_dispatch:
     push ax

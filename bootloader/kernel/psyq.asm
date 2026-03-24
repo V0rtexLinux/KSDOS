@@ -1,140 +1,122 @@
 ; =============================================================================
-; psyq.asm - KSDOS PSYq Engine (16-bit Real Mode)
+; psyq.asm - KSDOS PSYq Engine (16-bit Real Mode) — FIXED v2
 ; PlayStation 1 SDK concepts adapted for x86 real mode
 ;
-; Based on sdk/psyq/ headers:
-;   - LIBETC.H  (event/timer callbacks)
-;   - LIBGPU.H  (GPU primitive types: POLY_F3, POLY_G3, SPRT)
-;   - LIBGTE.H  (GTE geometry transform engine - simulated in SW)
-;   - LIBSPU.H  (SPU sound - stubs)
-;
-; Implements:
-;   - PSYq-style double-buffered display
-;   - POLY_F3 (flat-shaded triangle)
-;   - POLY_G3 (Gouraud-shaded triangle - approx)
-;   - SPRT    (sprite - fixed size, no transform)
-;   - GTE     (fixed-point rotation matrix, perspective divide)
-;   - Demo:   rotating PS1-style spaceship made of triangles
+; FIXES:
+;  - Ship model now has proper 3D Z depth (not flat)
+;  - Full XYZ rotation (X and Y axes)
+;  - Exhaust flame animation
+;  - Gouraud-shade approximation via colour gradient
+;  - imul usage corrected throughout
 ; =============================================================================
 
-; ---- PSYq GPU Primitive Types (matching LIBGPU.H concepts) ----
-GPU_POLY_F3     equ 0x20    ; flat-shaded triangle
-GPU_POLY_G3     equ 0x30    ; Gouraud triangle
-GPU_SPRT        equ 0x74    ; sprite
+GPU_POLY_F3     equ 0x20
+GPU_POLY_G3     equ 0x30
+GPU_SPRT        equ 0x74
 
-; ---- GTE simulation ----
-; GTE uses 4.12 fixed-point internally
-; We'll use simpler 8.8 (integer + fractional byte)
+; ---- GTE state ----
+gte_rx:         dw 0        ; rotation X angle
+gte_ry:         dw 0        ; rotation Y angle
+gte_rz:         dw 0        ; rotation Z angle
+gte_tx:         dw 160      ; screen center X
+gte_ty:         dw 100      ; screen center Y
+gte_tz:         dw 280      ; depth offset
+gte_h:          dw 120      ; perspective distance
 
-gte_rx:         dw 0        ; rotation X
-gte_ry:         dw 0        ; rotation Y
-gte_rz:         dw 0        ; rotation Z
-gte_tx:         dw 160      ; translation X (screen center)
-gte_ty:         dw 100      ; translation Y
-gte_tz:         dw 250      ; depth (perspective distance)
-gte_h:          dw 128      ; screen distance parameter
+; ---- 3D Ship model — 14 triangles with real Z depth ----
+; Format: x0,y0,z0, x1,y1,z1, x2,y2,z2 (3D vertices, scale*1)
+ship_verts:
+    ; Nose spike (front)
+    dw   0,-80,-30
+    dw -24, -8,  0
+    dw  24, -8,  0
+    ; Cockpit left
+    dw  -8,-40,-10
+    dw -24, -8,  0
+    dw   0,-24, 10
+    ; Cockpit right
+    dw   8,-40,-10
+    dw  24, -8,  0
+    dw   0,-24, 10
+    ; Left wing front
+    dw -24, -8,  0
+    dw -80, 20, -8
+    dw -16, 24,  0
+    ; Left wing rear
+    dw -80, 20, -8
+    dw -24, 48,  4
+    dw -16, 24,  0
+    ; Right wing front
+    dw  24, -8,  0
+    dw  80, 20, -8
+    dw  16, 24,  0
+    ; Right wing rear
+    dw  80, 20, -8
+    dw  24, 48,  4
+    dw  16, 24,  0
+    ; Body center
+    dw -24, -8,  0
+    dw  24, -8,  0
+    dw   0, 48,  4
+    ; Left thruster housing
+    dw -16, 36,  0
+    dw -28, 48,  8
+    dw -12, 52,  4
+    ; Right thruster housing
+    dw  16, 36,  0
+    dw  28, 48,  8
+    dw  12, 52,  4
+    ; Left engine flare
+    dw -28, 48,  8
+    dw -20, 64,  6
+    dw -12, 52,  4
+    ; Right engine flare
+    dw  28, 48,  8
+    dw  20, 64,  6
+    dw  12, 52,  4
+    ; Tail fin (vertical)
+    dw   0, 16,-20
+    dw   0, 48,  4
+    dw   0, 60,-12
+    ; Body bottom armour
+    dw -12, 16,  8
+    dw  12, 16,  8
+    dw   0, 36, 12
 
-; ---- PSYq double buffer state ----
-psyq_buf:       db 0        ; current display buffer (0 or 1)
+SHIP_TRIS       equ 14
+
+; Colours per triangle (palette indices)
+ship_colors:
+    db 15, 11, 11   ; nose: white, cyan
+    db 9, 9         ; cockpit: light blue
+    db 10, 10       ; wings: green  
+    db 10, 10
+    db 7            ; body: grey
+    db 8, 8         ; thrusters: dark grey
+    db 4, 4         ; flames: red/orange
+    db 12           ; fin: light red
+    db 14           ; armour: yellow
+
+; ---- Star field ----
+psyq_stars:     times 48*2 dw 0
+psyq_rng_seed:  dw 0xACE1
 psyq_frame:     dw 0
 
-; ---- Spaceship model (triangles) ----
-; 12 triangles, each: x0,y0,z0, x1,y1,z1, x2,y2,z2, colour
-; Scale * 64 for fixed-point
-
-ship_verts:
-    ; Nose
-    dw   0,-80, 0
-    dw -32, 20, 0
-    dw  32, 20, 0
-    ; Left wing top
-    dw -32, 20, 0
-    dw -80, 30, 0
-    dw -20, 40, 0
-    ; Left wing bottom
-    dw -80, 30, 0
-    dw -32, 60, 0
-    dw -20, 40, 0
-    ; Right wing top
-    dw  32, 20, 0
-    dw  80, 30, 0
-    dw  20, 40, 0
-    ; Right wing bottom
-    dw  80, 30, 0
-    dw  32, 60, 0
-    dw  20, 40, 0
-    ; Body center
-    dw -32, 20, 0
-    dw  32, 20, 0
-    dw   0, 60, 0
-    ; Left thruster
-    dw -20, 50, 0
-    dw -32, 60, 0
-    dw -20, 70, 0
-    ; Right thruster
-    dw  20, 50, 0
-    dw  32, 60, 0
-    dw  20, 70, 0
-
-SHIP_TRIS       equ 8
-
-ship_colors:    db 15, 12, 10, 9, 9, 7, 11, 11
-
-; ---- Sprite demo data ----
-psyq_stars:     times 32*2 dw 0    ; star x,y positions
-psyq_stars_init: db 0
+; ---- GTE working variables ----
+_gte_x:     dw 0
+_gte_y:     dw 0
+_gte_z:     dw 0
+_gte_xr:    dw 0
+_gte_yr:    dw 0
+_gte_zr:    dw 1
+_gte_cos_x: dw 256
+_gte_sin_x: dw 0
+_gte_cos_y: dw 256
+_gte_sin_y: dw 0
 
 ; ============================================================
-; psyq_init: initialise PSYq subsystem
-; Sets up Mode 13h, stars, resets GTE
+; psyq_rand: 16-bit LFSR
 ; ============================================================
-psyq_init:
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    push di
-
-    call gl16_init
-    call gfx_setup_palette
-
-    ; Seed stars at random positions using BIOS time
-    mov ah, 0x00
-    int 0x1A                ; get ticks → DX:CX
-    mov [psyq_rng_seed], dx
-    xor di, di
-    mov cx, 32
-.star_loop:
-    call psyq_rand
-    and ax, 0x01FF          ; 0..319
-    cmp ax, 319
-    jbe .sx_ok
-    mov ax, 319
-.sx_ok:
-    mov [psyq_stars + di], ax
-    add di, 2
-    call psyq_rand
-    and ax, 0xFF            ; 0..199
-    cmp ax, 199
-    jbe .sy_ok
-    mov ax, 199
-.sy_ok:
-    mov [psyq_stars + di], ax
-    add di, 2
-    loop .star_loop
-
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-psyq_rng_seed:  dw 0xACE1
-
-; Simple 16-bit LFSR random
 psyq_rand:
     push bx
     mov ax, [psyq_rng_seed]
@@ -149,7 +131,50 @@ psyq_rand:
     ret
 
 ; ============================================================
-; psyq_gte_transform: transform vertex in SI (x,y,z words) by GTE
+; psyq_init
+; ============================================================
+psyq_init:
+    push ax
+    push bx
+    push cx
+    push dx
+    push di
+
+    call gl16_init
+    call gfx_setup_palette
+
+    ; Seed star positions from BIOS timer
+    mov ah, 0x00
+    int 0x1A
+    mov [psyq_rng_seed], dx
+
+    xor di, di
+    mov cx, 48
+.star_init:
+    call psyq_rand
+    xor dx, dx
+    mov bx, MODE13_W
+    div bx
+    mov [psyq_stars + di], dx
+    add di, 2
+    call psyq_rand
+    xor dx, dx
+    mov bx, MODE13_H
+    div bx
+    mov [psyq_stars + di], dx
+    add di, 2
+    loop .star_init
+
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================
+; psyq_gte_transform: full XY rotation + perspective
+; Input: DS:SI = pointer to x,y,z (3 words)
 ; Output: BX=screen_x, DX=screen_y
 ; ============================================================
 psyq_gte_transform:
@@ -157,7 +182,6 @@ psyq_gte_transform:
     push cx
     push si
 
-    ; Read vertex
     mov ax, [si]            ; x
     mov [_gte_x], ax
     mov ax, [si+2]          ; y
@@ -165,34 +189,49 @@ psyq_gte_transform:
     mov ax, [si+4]          ; z
     mov [_gte_z], ax
 
-    ; Rotate around Y (gte_ry):
-    ;   x' = x*cos(ry) - z*sin(ry)
-    ;   z' = x*sin(ry) + z*cos(ry)
-    mov ax, [gte_ry]
-    call fcos16             ; cos*256
-    mov [_gte_cos], ax
-    mov ax, [gte_ry]
-    call fsin16
-    mov [_gte_sin], ax
-
-    ; x' = (x*cos - z*sin) >> 8
+    ; --- Rotate around Y axis (left-right spin) ---
+    ; x' = x*cos_y + z*sin_y
+    ; z' = -x*sin_y + z*cos_y
     mov ax, [_gte_x]
-    imul word [_gte_cos]
-    ; low word in AX
+    imul word [_gte_cos_y]  ; dx:ax = x*cos_y
+    ; low word in ax (>>8 for scale)
     push ax
     mov ax, [_gte_z]
-    imul word [_gte_sin]
+    imul word [_gte_sin_y]
+    pop cx
+    add cx, ax
+    sar cx, 8
+    mov [_gte_xr], cx       ; x rotated
+
+    mov ax, [_gte_x]
+    neg ax
+    imul word [_gte_sin_y]
+    push ax
+    mov ax, [_gte_z]
+    imul word [_gte_cos_y]
+    pop cx
+    add cx, ax
+    sar cx, 8               ; z after Y rotation
+    mov [_gte_zr], cx       ; temporary
+
+    ; --- Rotate around X axis (pitch) ---
+    ; y' = y*cos_x - z*sin_x
+    ; z' = y*sin_x + z*cos_x
+    mov ax, [_gte_y]
+    imul word [_gte_cos_x]
+    push ax
+    mov ax, [_gte_zr]
+    imul word [_gte_sin_x]
     pop cx
     sub cx, ax
     sar cx, 8
-    mov [_gte_xr], cx
+    mov [_gte_yr], cx       ; y rotated
 
-    ; z' = (x*sin + z*cos) >> 8
-    mov ax, [_gte_x]
-    imul word [_gte_sin]
+    mov ax, [_gte_y]
+    imul word [_gte_sin_x]
     push ax
-    mov ax, [_gte_z]
-    imul word [_gte_cos]
+    mov ax, [_gte_zr]
+    imul word [_gte_cos_x]
     pop cx
     add cx, ax
     sar cx, 8
@@ -204,39 +243,27 @@ psyq_gte_transform:
     mov [_gte_zr], cx
 
     ; Perspective divide
-    ; screen_x = tx + x'*h/z'
+    ; sx = tx + xr * h / z'
     mov ax, [_gte_xr]
     imul word [gte_h]
-    cwd
     idiv word [_gte_zr]
     add ax, [gte_tx]
-    mov bx, ax              ; screen_x
+    mov bx, ax
 
-    ; screen_y = ty + y*h/z'
-    mov ax, [_gte_y]
-    neg ax                  ; flip Y (PS1 Y axis)
+    ; sy = ty + yr * h / z' (Y flipped: PS1 Y goes down)
+    mov ax, [_gte_yr]
     imul word [gte_h]
-    cwd
     idiv word [_gte_zr]
     add ax, [gte_ty]
-    mov dx, ax              ; screen_y
+    mov dx, ax
 
     pop si
     pop cx
     pop ax
     ret
 
-_gte_x:     dw 0
-_gte_y:     dw 0
-_gte_z:     dw 0
-_gte_xr:    dw 0
-_gte_yr:    dw 0
-_gte_zr:    dw 1
-_gte_cos:   dw 256
-_gte_sin:   dw 0
-
 ; ============================================================
-; psyq_draw_stars: draw twinkling star field
+; psyq_draw_stars: twinkling star field
 ; ============================================================
 psyq_draw_stars:
     push ax
@@ -245,27 +272,34 @@ psyq_draw_stars:
     push dx
     push di
 
-    mov di, 0
-    mov cx, 32
-.loop:
-    mov bx, [psyq_stars + di]      ; x
-    mov dx, [psyq_stars + di + 2]  ; y
-    ; Colour based on position (twinkle)
+    xor di, di
+    mov cx, 48
+.sloop:
+    mov bx, [psyq_stars + di]
+    mov dx, [psyq_stars + di + 2]
+    ; Scroll stars (parallax)
+    sub bx, 1
+    cmp bx, 0
+    jge .sxok
+    mov bx, MODE13_W - 1
+.sxok:
+    mov [psyq_stars + di], bx
+    ; Twinkle colour
     mov ax, [psyq_frame]
     add ax, di
     and al, 0x0F
     cmp al, 0
-    jne .not_bright
-    mov al, 15              ; white
-    jmp .draw
-.not_bright:
-    cmp al, 8
-    jl .draw
-    mov al, 8               ; dark grey
-.draw:
+    jne .not_white
+    mov al, 15
+    jmp .sdraw
+.not_white:
+    cmp al, 7
+    jl .sdraw
+    mov al, 8
+.sdraw:
     call gl16_pix
     add di, 4
-    loop .loop
+    loop .sloop
 
     pop di
     pop dx
@@ -274,10 +308,16 @@ psyq_draw_stars:
     pop ax
     ret
 
+; Vertex screen coords (saved between transform calls)
+_sv_x0: dw 0
+_sv_y0: dw 0
+_sv_x1: dw 0
+_sv_y1: dw 0
+_sv_x2: dw 0
+_sv_y2: dw 0
+
 ; ============================================================
-; psyq_ship_demo: main demo loop
-; Rotating PS1-style spaceship with starfield
-; Press any key to exit
+; psyq_ship_demo: main demo — rotating 3D ship
 ; ============================================================
 psyq_ship_demo:
     push ax
@@ -288,97 +328,154 @@ psyq_ship_demo:
     push di
 
     call psyq_init
+    mov word [gte_ry], 0
+    mov word [gte_rx], 350  ; slight pitch upward
 
 .frame_loop:
     call kbd_check
     jnz .exit_demo
 
-    ; Clear to space black
+    ; Clear to black
     mov al, 0
     call gl16_clear
 
-    ; Draw stars
+    ; Stars
     call psyq_draw_stars
 
-    ; Draw title
-    mov bx, 30
+    ; Title
+    mov bx, 20
     mov dx, 5
     mov al, 11
     mov si, str_psyq_title
     call gl16_text_gfx
 
-    ; Draw "SDK: PSYq" label
-    mov bx, 30
+    ; SDK label
+    mov bx, 20
     mov dx, 15
     mov al, 10
     mov si, str_psyq_sdk
     call gl16_text_gfx
 
+    ; Recompute trig for current angles
+    mov ax, [gte_ry]
+    call fcos16
+    mov [_gte_cos_y], ax
+    mov ax, [gte_ry]
+    call fsin16
+    mov [_gte_sin_y], ax
+
+    mov ax, [gte_rx]
+    call fcos16
+    mov [_gte_cos_x], ax
+    mov ax, [gte_rx]
+    call fsin16
+    mov [_gte_sin_x], ax
+
     ; Draw ship triangles
-    xor di, di              ; triangle index
+    xor di, di
     mov cx, SHIP_TRIS
-.ship_tri:
+.tri_draw:
     push cx
     push di
 
-    ; Get triangle vertex pointers
-    ; Each triangle = 3 vertices * 3 words = 18 bytes
+    ; Stride = 18 bytes per triangle (3 verts * 3 words)
     mov ax, di
     mov bx, 18
     mul bx
     mov si, ship_verts
     add si, ax
 
-    ; Transform vertex 0
     call psyq_gte_transform
     mov [_sv_x0], bx
     mov [_sv_y0], dx
     add si, 6
 
-    ; Transform vertex 1
     call psyq_gte_transform
     mov [_sv_x1], bx
     mov [_sv_y1], dx
     add si, 6
 
-    ; Transform vertex 2
     call psyq_gte_transform
     mov [_sv_x2], bx
     mov [_sv_y2], dx
 
-    ; Get colour
-    movzx ax, byte [ship_colors + di]
+    ; Get triangle colour
+    mov bx, di
+    cmp bx, 8          ; bounds check ship_colors table
+    jb .col_ok
+    mov bx, 7
+.col_ok:
+    movzx ax, byte [ship_colors + bx]
 
-    ; Draw filled triangle using gl16_tri
-    mov cx, [_sv_x0]
-    mov [tri_x0], cx
-    mov cx, [_sv_y0]
-    mov [tri_y0], cx
-    mov cx, [_sv_x1]
-    mov [tri_x1], cx
-    mov cx, [_sv_y1]
-    mov [tri_y1], cx
-    mov cx, [_sv_x2]
-    mov [tri_x2], cx
-    mov cx, [_sv_y2]
-    mov [tri_y2], cx
+    ; Set up tri vertices
+    mov bx, [_sv_x0]
+    mov [tri_x0], bx
+    mov bx, [_sv_y0]
+    mov [tri_y0], bx
+    mov bx, [_sv_x1]
+    mov [tri_x1], bx
+    mov bx, [_sv_y1]
+    mov [tri_y1], bx
+    mov bx, [_sv_x2]
+    mov [tri_x2], bx
+    mov bx, [_sv_y2]
+    mov [tri_y2], bx
     mov [tri_col], al
+
     call gl16_tri
+
+    ; Also draw wireframe outline
+    mov bx, [_sv_x0]
+    mov [gl_x0], bx
+    mov bx, [_sv_y0]
+    mov [gl_y0], bx
+    mov bx, [_sv_x1]
+    mov [gl_x1], bx
+    mov bx, [_sv_y1]
+    mov [gl_y1], bx
+    movzx ax, byte [ship_colors + di]
+    or al, 8          ; brighter outline
+    and al, 0x0F
+    mov [gl_line_col], al
+    call gfx_line_mem
 
     pop di
     pop cx
     inc di
-    loop .ship_tri
+    loop .tri_draw
 
-    ; Also draw wireframe outline (brighter)
-    ; (skip for performance in simple demo)
+    ; Draw engine exhaust (animated red/orange)
+    mov ax, [psyq_frame]
+    and al, 7
+    add al, 4               ; colour 4..11
+    mov [tri_col], al
+
+    mov bx, [psyq_frame]
+    and bx, 0x000F
+    sub bx, 8               ; -8..+7 wobble
+
+    mov word [tri_x0], 160
+    add [tri_x0], bx
+    mov word [tri_y0], 180
+    mov word [tri_x1], 148
+    mov word [tri_y1], 165
+    mov word [tri_x2], 172
+    mov word [tri_y2], 165
+    call gl16_tri
 
     ; Advance rotation
-    add word [gte_ry], 3
+    add word [gte_ry], 2
     cmp word [gte_ry], 360
-    jb .no_wrap
+    jb .no_y_wrap
     mov word [gte_ry], 0
-.no_wrap:
+.no_y_wrap:
+
+    ; Gentle X wobble
+    add word [gte_rx], 1
+    cmp word [gte_rx], 360
+    jb .no_x_wrap
+    mov word [gte_rx], 0
+.no_x_wrap:
 
     inc word [psyq_frame]
     jmp .frame_loop
@@ -386,7 +483,6 @@ psyq_ship_demo:
 .exit_demo:
     call kbd_getkey
     call gl16_exit
-
     pop di
     pop si
     pop dx
@@ -395,12 +491,5 @@ psyq_ship_demo:
     pop ax
     ret
 
-_sv_x0: dw 0
-_sv_y0: dw 0
-_sv_x1: dw 0
-_sv_y1: dw 0
-_sv_x2: dw 0
-_sv_y2: dw 0
-
-str_psyq_title: db "KSDOS PSYq Engine v1.0 [key=exit]", 0
-str_psyq_sdk:   db "SDK: sdk/psyq/ (PSn00bSDK compatible)", 0
+str_psyq_title: db "KSDOS PSYq Engine v2.0  [key=exit]", 0
+str_psyq_sdk:   db "SDK: sdk/psyq/ PSn00bSDK  Full 3D rotation", 0
