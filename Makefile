@@ -28,7 +28,7 @@ DISK_IMG     := $(BUILD)/disk.img
 # ---------------------------------------------------------------------------
 # Overlay binaries (assembled separately, embedded as .OVL files on disk)
 # ---------------------------------------------------------------------------
-OVL_NAMES := CC MASM CSC MUSIC NET OPENGL PSYQ GOLD4 IDE
+OVL_NAMES := CC MASM CSC MUSIC NET OPENGL PSYQ GOLD4 IDE AI MATRIX SYSINFO CALC COLOR
 OVL_BINS  := $(patsubst %,$(BUILD)/%.OVL,$(OVL_NAMES))
 
 RASPBERRY := raspberry
@@ -103,6 +103,31 @@ $(BUILD)/IDE.OVL:    $(OVL_DIR)/ide.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUIL
 	@echo "[NASM] Assembling overlay IDE..."
 	$(NASM) $(OVL_FLAGS) -o $@ $<
 	@echo "[OK]   IDE.OVL"
+
+$(BUILD)/AI.OVL:     $(OVL_DIR)/ai.ovl.asm      $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay AI..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   AI.OVL"
+
+$(BUILD)/MATRIX.OVL:  $(OVL_DIR)/matrix.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay MATRIX..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   MATRIX.OVL"
+
+$(BUILD)/SYSINFO.OVL: $(OVL_DIR)/sysinfo.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay SYSINFO..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   SYSINFO.OVL"
+
+$(BUILD)/CALC.OVL:   $(OVL_DIR)/calc.ovl.asm    $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay CALC..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   CALC.OVL"
+
+$(BUILD)/COLOR.OVL:  $(OVL_DIR)/color.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay COLOR..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   COLOR.OVL"
 
 $(DISK_IMG): $(BOOTSECT_BIN) $(KERNEL_BIN) $(OVL_BINS) | $(BUILD)
 	@echo "[PERL] Building FAT12 disk image..."

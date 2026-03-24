@@ -221,6 +221,23 @@ cmd_table:
     dw cmd_s_SYSINFO, sh_SYSINFO
     dw cmd_s_CALC,    sh_CALC
     dw cmd_s_COLOR,   sh_COLOR
+    dw cmd_s_EDLIN,   sh_EDLIN
+    dw cmd_s_FC,      sh_FC
+    dw cmd_s_COMP,    sh_COMP
+    dw cmd_s_KEYB,    sh_KEYB
+    dw cmd_s_MODE,    sh_MODE
+    dw cmd_s_GRAFTABL, sh_GRAFTABL
+    dw cmd_s_FDISK,   sh_FDISK
+    dw cmd_s_NLSFUNC, sh_NLSFUNC
+    dw cmd_s_FASTOPEN, sh_FASTOPEN
+    dw cmd_s_JOIN,    sh_JOIN
+    dw cmd_s_SUBST,   sh_SUBST
+    dw cmd_s_APPEND,  sh_APPEND
+    dw cmd_s_BACKUP,  sh_BACKUP
+    dw cmd_s_RESTORE, sh_RESTORE
+    dw cmd_s_SHARE,   sh_SHARE
+    dw cmd_s_ASSIGN,  sh_ASSIGN
+    dw cmd_s_DISKCOMP, sh_DISKCOMP
     dw 0, 0             ; sentinel
 
 ; Command name strings (uppercase)
@@ -281,6 +298,23 @@ cmd_s_MATRIX:   db "MATRIX",   0
 cmd_s_SYSINFO:  db "SYSINFO",  0
 cmd_s_CALC:     db "CALC",     0
 cmd_s_COLOR:    db "COLOR",    0
+cmd_s_EDLIN:    db "EDLIN",    0
+cmd_s_FC:       db "FC",       0
+cmd_s_COMP:     db "COMP",     0
+cmd_s_KEYB:     db "KEYB",     0
+cmd_s_MODE:     db "MODE",     0
+cmd_s_GRAFTABL: db "GRAFTABL", 0
+cmd_s_FDISK:    db "FDISK",    0
+cmd_s_NLSFUNC:  db "NLSFUNC",  0
+cmd_s_FASTOPEN: db "FASTOPEN", 0
+cmd_s_JOIN:     db "JOIN",     0
+cmd_s_SUBST:    db "SUBST",    0
+cmd_s_APPEND:   db "APPEND",   0
+cmd_s_BACKUP:   db "BACKUP",   0
+cmd_s_RESTORE:  db "RESTORE",  0
+cmd_s_SHARE:    db "SHARE",    0
+cmd_s_ASSIGN:   db "ASSIGN",   0
+cmd_s_DISKCOMP: db "DISKCOMP", 0
 
 sh_dispatch:
     push ax
@@ -2233,6 +2267,28 @@ ovl_OPENGL: db 'O','P','E','N','G','L',' ',' ','O','V','L'
 ovl_PSYQ:   db 'P','S','Y','Q',' ',' ',' ',' ','O','V','L'
 ovl_GOLD4:  db 'G','O','L','D','4',' ',' ',' ','O','V','L'
 ovl_IDE:    db 'I','D','E',' ',' ',' ',' ',' ','O','V','L'
+ovl_AI:     db 'A','I',' ',' ',' ',' ',' ',' ','O','V','L'
+ovl_MATRIX: db 'M','A','T','R','I','X',' ',' ','O','V','L'
+ovl_SYSINFO: db 'S','Y','S','I','N','F','O',' ','O','V','L'
+ovl_CALC:   db 'C','A','L','C',' ',' ',' ',' ','O','V','L'
+ovl_COLOR:  db 'C','O','L','O','R',' ',' ',' ','O','V','L'
+ovl_EDLIN:  db 'E','D','L','I','N',' ',' ',' ','O','V','L'
+ovl_FC:     db 'F','C',' ',' ',' ',' ',' ',' ','O','V','L'
+ovl_COMP:   db 'C','O','M','P',' ',' ',' ',' ','O','V','L'
+ovl_KEYB:   db 'K','E','Y','B',' ',' ',' ',' ','O','V','L'
+ovl_MODE:   db 'M','O','D','E',' ',' ',' ',' ','O','V','L'
+ovl_GRAFTABL: db 'G','R','A','F','T','A','B','L','O','V','L'
+ovl_FDISK:  db 'F','D','I','S','K',' ',' ',' ','O','V','L'
+ovl_NLSFUNC: db 'N','L','S','F','U','N','C',' ','O','V','L'
+ovl_FASTOPEN: db 'F','A','S','T','O','P','E','N','O','V','L'
+ovl_JOIN:   db 'J','O','I','N',' ',' ',' ',' ','O','V','L'
+ovl_SUBST:  db 'S','U','B','S','T',' ',' ',' ','O','V','L'
+ovl_APPEND: db 'A','P','P','E','N','D',' ',' ','O','V','L'
+ovl_BACKUP: db 'B','A','C','K','U','P',' ',' ','O','V','L'
+ovl_RESTORE: db 'R','E','S','T','O','R','E',' ','O','V','L'
+ovl_SHARE:  db 'S','H','A','R','E',' ',' ',' ','O','V','L'
+ovl_ASSIGN: db 'A','S','S','I','G','N',' ',' ','O','V','L'
+ovl_DISKCOMP: db 'D','I','S','K','C','O','M','P','O','V','L'
 
 sh_CC:
     mov si, ovl_CC
@@ -2281,6 +2337,118 @@ sh_INSTALL:
 .verify_error:
     mov si, str_verify_error
     call vid_println
+    ret
+
+; New command stubs
+sh_AI:
+    mov si, ovl_AI
+    call ovl_load_run
+    ret
+
+sh_MATRIX:
+    mov si, ovl_MATRIX
+    call ovl_load_run
+    ret
+
+sh_SYSINFO:
+    mov si, ovl_SYSINFO
+    call ovl_load_run
+    ret
+
+sh_CALC:
+    mov si, ovl_CALC
+    call ovl_load_run
+    ret
+
+sh_COLOR:
+    mov si, ovl_COLOR
+    call ovl_load_run
+    ret
+
+; Additional DOS command stubs
+sh_EDLIN:
+    mov si, ovl_EDLIN
+    call ovl_load_run
+    ret
+
+sh_FC:
+    mov si, ovl_FC
+    call ovl_load_run
+    ret
+
+sh_COMP:
+    mov si, ovl_COMP
+    call ovl_load_run
+    ret
+
+sh_KEYB:
+    mov si, ovl_KEYB
+    call ovl_load_run
+    ret
+
+sh_MODE:
+    mov si, ovl_MODE
+    call ovl_load_run
+    ret
+
+sh_GRAFTABL:
+    mov si, ovl_GRAFTABL
+    call ovl_load_run
+    ret
+
+sh_FDISK:
+    mov si, ovl_FDISK
+    call ovl_load_run
+    ret
+
+sh_NLSFUNC:
+    mov si, ovl_NLSFUNC
+    call ovl_load_run
+    ret
+
+sh_FASTOPEN:
+    mov si, ovl_FASTOPEN
+    call ovl_load_run
+    ret
+
+sh_JOIN:
+    mov si, ovl_JOIN
+    call ovl_load_run
+    ret
+
+sh_SUBST:
+    mov si, ovl_SUBST
+    call ovl_load_run
+    ret
+
+sh_APPEND:
+    mov si, ovl_APPEND
+    call ovl_load_run
+    ret
+
+sh_BACKUP:
+    mov si, ovl_BACKUP
+    call ovl_load_run
+    ret
+
+sh_RESTORE:
+    mov si, ovl_RESTORE
+    call ovl_load_run
+    ret
+
+sh_SHARE:
+    mov si, ovl_SHARE
+    call ovl_load_run
+    ret
+
+sh_ASSIGN:
+    mov si, ovl_ASSIGN
+    call ovl_load_run
+    ret
+
+sh_DISKCOMP:
+    mov si, ovl_DISKCOMP
+    call ovl_load_run
     ret
 
 ; ============================================================

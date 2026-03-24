@@ -198,7 +198,6 @@ ksdos_title_text: db "KSDOS Operating System", 0
 %include "splash.asm"
 %include "ovl_api.asm"
 %include "mass_loader.asm"
-%include "ksdos.asm"
 %include "compiler_asm.asm"
 %include "compiler_c.asm"
 %include "compiler_csc.asm"
@@ -209,8 +208,9 @@ ksdos_title_text: db "KSDOS Operating System", 0
 %include "net.asm"
 %include "opengl.asm"
 %include "psyq.asm"
+%include "ai.asm"
 ; ---------------------------------------------------------------------------
-; SYSTEM DIRECTORY INCLUDES - ALL SYSTEM MODULES
+; SYSTEM DIRECTORY INCLUDES - ALL SYSTEM MODULES (NASM Compatible)
 ; ---------------------------------------------------------------------------
 %include "system/BIOS/MSAUX.ASM"
 %include "system/BIOS/MSCON.ASM"
