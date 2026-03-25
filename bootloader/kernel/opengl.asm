@@ -963,7 +963,8 @@ gl16_cube_demo:
     pop di
     pop cx
     inc di
-    loop .proj_loop
+    dec cx
+    jnz .proj_loop
 
     ; Draw 12 edges
     mov cx, 12
@@ -975,14 +976,18 @@ gl16_cube_demo:
     movzx dx, byte [si+1]
     shl bx, 1
     shl dx, 1
-    mov ax, [proj_x + bx]
+    push di
+    mov di, bx
+    mov ax, [proj_x + di]
     mov [gl_x0], ax
-    mov ax, [proj_y + bx]
+    mov ax, [proj_y + di]
     mov [gl_y0], ax
-    mov ax, [proj_x + dx]
+    mov di, dx
+    mov ax, [proj_x + di]
     mov [gl_x1], ax
-    mov ax, [proj_y + dx]
+    mov ax, [proj_y + di]
     mov [gl_y1], ax
+    pop di
     mov byte [gl_line_col], 14  ; yellow
     call gfx_line_mem
     pop si

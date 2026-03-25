@@ -238,6 +238,18 @@ cmd_table:
     dw cmd_s_SHARE,   sh_SHARE
     dw cmd_s_ASSIGN,  sh_ASSIGN
     dw cmd_s_DISKCOMP, sh_DISKCOMP
+    dw cmd_s_JAVA,     sh_JAVA
+    dw cmd_s_JAVAC,    sh_JAVA
+    dw cmd_s_PYTHON,   sh_PYTHON
+    dw cmd_s_PY,       sh_PYTHON
+    dw cmd_s_PERL,     sh_PERL
+    dw cmd_s_PHP,      sh_PHP
+    dw cmd_s_VB,       sh_VB
+    dw cmd_s_VBC,      sh_VB
+    dw cmd_s_DELPHI,   sh_DELPHI
+    dw cmd_s_DCC,      sh_DELPHI
+    dw cmd_s_JS,       sh_JS
+    dw cmd_s_JSCRIPT,  sh_JS
     dw 0, 0             ; sentinel
 
 ; Command name strings (uppercase)
@@ -315,6 +327,18 @@ cmd_s_RESTORE:  db "RESTORE",  0
 cmd_s_SHARE:    db "SHARE",    0
 cmd_s_ASSIGN:   db "ASSIGN",   0
 cmd_s_DISKCOMP: db "DISKCOMP", 0
+cmd_s_JAVA:     db "JAVA",     0
+cmd_s_JAVAC:    db "JAVAC",    0
+cmd_s_PYTHON:   db "PYTHON",   0
+cmd_s_PY:       db "PY",       0
+cmd_s_PERL:     db "PERL",     0
+cmd_s_PHP:      db "PHP",      0
+cmd_s_VB:       db "VB",       0
+cmd_s_VBC:      db "VBC",      0
+cmd_s_DELPHI:   db "DELPHI",   0
+cmd_s_DCC:      db "DCC",      0
+cmd_s_JS:       db "JS",       0
+cmd_s_JSCRIPT:  db "JSCRIPT",  0
 
 sh_dispatch:
     push ax
@@ -2289,6 +2313,13 @@ ovl_RESTORE: db 'R','E','S','T','O','R','E',' ','O','V','L'
 ovl_SHARE:  db 'S','H','A','R','E',' ',' ',' ','O','V','L'
 ovl_ASSIGN: db 'A','S','S','I','G','N',' ',' ','O','V','L'
 ovl_DISKCOMP: db 'D','I','S','K','C','O','M','P','O','V','L'
+ovl_JAVA:   db 'J','A','V','A',' ',' ',' ',' ','O','V','L'
+ovl_PY:     db 'P','Y',' ',' ',' ',' ',' ',' ','O','V','L'
+ovl_PERL:   db 'P','E','R','L',' ',' ',' ',' ','O','V','L'
+ovl_PHP:    db 'P','H','P',' ',' ',' ',' ',' ','O','V','L'
+ovl_VB:     db 'V','B',' ',' ',' ',' ',' ',' ','O','V','L'
+ovl_DELPHI: db 'D','E','L','P','H','I',' ',' ','O','V','L'
+ovl_JS:     db 'J','S',' ',' ',' ',' ',' ',' ','O','V','L'
 
 sh_CC:
     mov si, ovl_CC
@@ -2451,6 +2482,41 @@ sh_DISKCOMP:
     call ovl_load_run
     ret
 
+sh_JAVA:
+    mov si, ovl_JAVA
+    call ovl_load_run
+    ret
+
+sh_PYTHON:
+    mov si, ovl_PY
+    call ovl_load_run
+    ret
+
+sh_PERL:
+    mov si, ovl_PERL
+    call ovl_load_run
+    ret
+
+sh_PHP:
+    mov si, ovl_PHP
+    call ovl_load_run
+    ret
+
+sh_VB:
+    mov si, ovl_VB
+    call ovl_load_run
+    ret
+
+sh_DELPHI:
+    mov si, ovl_DELPHI
+    call ovl_load_run
+    ret
+
+sh_JS:
+    mov si, ovl_JS
+    call ovl_load_run
+    ret
+
 ; ============================================================
 ; sh_banner: print startup banner
 ; ============================================================
@@ -2602,6 +2668,18 @@ str_help:
     db "  MASM <file.asm>    KSDOS-ASM x86 macro assembler", 0x0A
     db "  NASM <file.asm>    Alias for MASM", 0x0A
     db "  CSC  <file.cs>     KSDOS-CSC subset C# compiler", 0x0A
+    db "  JAVA <file.java>   Java 1.1 compiler + JVM", 0x0A
+    db "  JAVAC <file.java>  Alias for JAVA (compile only)", 0x0A
+    db "  PYTHON <file.py>   Python 1.5 interpreter", 0x0A
+    db "  PY   <file.py>     Alias for PYTHON", 0x0A
+    db "  PERL <file.pl>     Perl 5 interpreter", 0x0A
+    db "  PHP  <file.php>    PHP 3 interpreter", 0x0A
+    db "  VB   <file.bas>    Visual Basic 5 compiler", 0x0A
+    db "  VBC  <file.bas>    Alias for VB (compile only)", 0x0A
+    db "  DELPHI <file.pas>  Borland Delphi 3 compiler", 0x0A
+    db "  DCC  <file.pas>    Alias for DELPHI", 0x0A
+    db "  JS   <file.js>     JavaScript 1.2 interpreter", 0x0A
+    db "  JSCRIPT <file.js>  Alias for JS (JScript)", 0x0A
     db "Engines (Mode 13h 320x200 graphics):", 0x0A
     db "  OPENGL             16-bit software OpenGL renderer demo", 0x0A
     db "  PSYQ               PSYq PlayStation-style ship engine", 0x0A

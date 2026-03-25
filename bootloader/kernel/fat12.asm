@@ -1,3 +1,5 @@
+%ifndef FAT12_ASM_INCLUDED
+%define FAT12_ASM_INCLUDED
 ; =============================================================================
 ; fat12.asm - FAT12 Filesystem Driver
 ; 16-bit real mode
@@ -537,3 +539,5 @@ fat_save_fat:
     pop bx
     pop ax
     ret
+
+%endif ; FAT12_ASM_INCLUDED

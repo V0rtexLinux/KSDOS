@@ -28,7 +28,7 @@ DISK_IMG     := $(BUILD)/disk.img
 # ---------------------------------------------------------------------------
 # Overlay binaries (assembled separately, embedded as .OVL files on disk)
 # ---------------------------------------------------------------------------
-OVL_NAMES := CC MASM CSC MUSIC NET OPENGL PSYQ GOLD4 IDE AI MATRIX SYSINFO CALC COLOR
+OVL_NAMES := CC MASM CSC MUSIC NET OPENGL PSYQ GOLD4 IDE AI MATRIX SYSINFO CALC COLOR JAVA PY PERL PHP VB DELPHI JS
 OVL_BINS  := $(patsubst %,$(BUILD)/%.OVL,$(OVL_NAMES))
 
 RASPBERRY := raspberry
@@ -48,7 +48,7 @@ $(BOOTSECT_BIN): $(BOOTSECT_SRC) | $(BUILD)
 
 $(KERNEL_BIN): $(KERNEL_SRC) | $(BUILD)
 	@echo "[NASM] Assembling kernel (KSDOS.SYS)..."
-	$(NASM) -f bin -i $(KERN_DIR)/ -o $@ $<
+	$(NASM) -f bin -DBUILDING_KERNEL -i $(KERN_DIR)/ -o $@ $<
 	@echo "[OK]   ksdos.bin"
 
 $(MBR_BIN): $(MBR_SRC) | $(BUILD)
@@ -128,6 +128,41 @@ $(BUILD)/COLOR.OVL:  $(OVL_DIR)/color.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUIL
 	@echo "[NASM] Assembling overlay COLOR..."
 	$(NASM) $(OVL_FLAGS) -o $@ $<
 	@echo "[OK]   COLOR.OVL"
+
+$(BUILD)/JAVA.OVL:   $(OVL_DIR)/java.ovl.asm    $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay JAVA..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   JAVA.OVL"
+
+$(BUILD)/PY.OVL:     $(OVL_DIR)/python.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay PY..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   PY.OVL"
+
+$(BUILD)/PERL.OVL:   $(OVL_DIR)/perl.ovl.asm    $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay PERL..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   PERL.OVL"
+
+$(BUILD)/PHP.OVL:    $(OVL_DIR)/php.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay PHP..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   PHP.OVL"
+
+$(BUILD)/VB.OVL:     $(OVL_DIR)/vb.ovl.asm      $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay VB..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   VB.OVL"
+
+$(BUILD)/DELPHI.OVL: $(OVL_DIR)/delphi.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay DELPHI..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   DELPHI.OVL"
+
+$(BUILD)/JS.OVL:     $(OVL_DIR)/js.ovl.asm      $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay JS..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   JS.OVL"
 
 $(DISK_IMG): $(BOOTSECT_BIN) $(KERNEL_BIN) $(OVL_BINS) | $(BUILD)
 	@echo "[PERL] Building FAT12 disk image..."
