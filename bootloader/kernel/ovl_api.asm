@@ -17,10 +17,14 @@ OVERLAY_BUF     equ 0x7000
 ; ---------------------------------------------------------------------------
 ; Shared data area: fixed addresses in the kernel prefix (set by ksdos.asm)
 ; These must match the declarations in ksdos.asm exactly.
+; When building the kernel itself (BUILDING_KERNEL defined), these symbols
+; are declared as real labels in ksdos.asm — skip the EQU redefinitions.
 ; ---------------------------------------------------------------------------
+%ifndef BUILDING_KERNEL
 sh_arg          equ 0x0060      ; 128-byte argument buffer
 _sh_tmp11       equ 0x00E0      ; 12-byte DOS 8.3 name temp buffer
 _sh_type_sz     equ 0x00EC      ; word: source file size (used by compilers)
+%endif
 
 ; ---------------------------------------------------------------------------
 ; Constants mirrored from the kernel (EQUs, unchanged)
@@ -42,7 +46,9 @@ ATTR_MAGENTA    equ 0x05
 ; Each entry is a 3-byte near JMP to the real kernel function.
 ; Redefining these names here means all `call vid_print` etc. in the
 ; included module source automatically target the jump table.
+; Only active when assembling overlay binaries (not the kernel itself).
 ; ---------------------------------------------------------------------------
+%ifndef BUILDING_KERNEL
 vid_print           equ 0x0003
 vid_println         equ 0x0006
 vid_putchar         equ 0x0009
@@ -74,3 +80,4 @@ cluster_to_lba      equ 0x0054
 fat_next_cluster    equ 0x0057
 disk_read_sector    equ 0x005A
 disk_write_sector   equ 0x005D
+%endif

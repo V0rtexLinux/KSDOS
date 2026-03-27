@@ -17,7 +17,7 @@ DISKS    := $(BUILD)/disks
 
 # Source files
 BOOTSECT_SRC := $(BOOT_DIR)/bootsect.asm
-KERNEL_SRC   := $(KERN_DIR)/KERNEL.asm
+KERNEL_SRC   := $(KERN_DIR)/ksdos.asm
 MASS_LOADER_SRC := $(KERN_DIR)/mass_loader.asm
 
 # Binary outputs

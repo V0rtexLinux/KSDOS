@@ -1,3 +1,5 @@
+%ifndef DISK_ASM_INCLUDED
+%define DISK_ASM_INCLUDED
 ; =============================================================================
 ; disk.asm - Disk I/O driver (BIOS INT 13h)
 ; 16-bit real mode
@@ -188,3 +190,5 @@ disk_read_multi:
     pop bx
     pop ax
     ret
+
+%endif ; DISK_ASM_INCLUDED
