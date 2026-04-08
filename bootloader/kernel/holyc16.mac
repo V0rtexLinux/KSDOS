@@ -1,0 +1,585 @@
+; =============================================================================
+; holyc16.mac  -  HolyC16 Macro Language
+; HolyC-inspired syntax layer for NASM 16-bit Real Mode x86
+;
+; Design goals:
+;   - Type declarations that mirror HolyC (U0, U8, I8, U16, I16, Bool, Ptr)
+;   - Function definitions with FN / ENDFN / ENDFNF
+;   - Structured control flow with IF / ELSE / ENDIF and WHILE / ENDWHILE
+;   - High-level API macros: Print, PrintLn, SetColor, GetKey, etc.
+;   - Zero overhead — every macro expands to idiomatic 16-bit assembly
+;
+; Include AFTER ovl_api.asm (or after BUILDING_KERNEL block in ksdos.asm).
+; =============================================================================
+
+%ifndef HOLYC16_MAC
+%define HOLYC16_MAC
+
+; =============================================================================
+; COLOR CONSTANTS  (HolyC-style names; values = CGA text attribute nibbles)
+; =============================================================================
+HC_BLACK        equ 0x00
+HC_BLUE         equ 0x01
+HC_GREEN        equ 0x02
+HC_CYAN         equ 0x03
+HC_RED          equ 0x04
+HC_MAGENTA      equ 0x05
+HC_BROWN        equ 0x06
+HC_LTGRAY       equ 0x07
+HC_DKGRAY       equ 0x08
+HC_LTBLUE       equ 0x09
+HC_LTGREEN      equ 0x0A
+HC_LTCYAN       equ 0x0B
+HC_LTRED        equ 0x0C
+HC_LTMAGENTA    equ 0x0D
+HC_YELLOW       equ 0x0E
+HC_WHITE        equ 0x0F
+
+; Compact aliases (HolyC style, no HC_ prefix)
+BLACK           equ HC_BLACK
+BLUE            equ HC_BLUE
+GREEN           equ HC_GREEN
+CYAN            equ HC_CYAN
+RED             equ HC_RED
+MAGENTA         equ HC_MAGENTA
+BROWN           equ HC_BROWN
+LTGRAY          equ HC_LTGRAY
+DKGRAY          equ HC_DKGRAY
+LTBLUE          equ HC_LTBLUE
+LTGREEN         equ HC_LTGREEN
+LTCYAN          equ HC_LTCYAN
+LTRED           equ HC_LTRED
+LTMAGENTA       equ HC_LTMAGENTA
+YELLOW          equ HC_YELLOW
+WHITE           equ HC_WHITE
+
+; =============================================================================
+; TYPE SIZE CONSTANTS
+; =============================================================================
+SIZEOF_U8       equ 1
+SIZEOF_I8       equ 1
+SIZEOF_U16      equ 2
+SIZEOF_I16      equ 2
+SIZEOF_BOOL     equ 1
+SIZEOF_PTR      equ 2
+SIZEOF_U0       equ 0
+
+; =============================================================================
+; STATIC VARIABLE DECLARATIONS
+; Use in data areas (between functions or at module top-level).
+;
+;   U8   varname, initial_byte_value
+;   I8   varname, initial_byte_value
+;   U16  varname, initial_word_value
+;   I16  varname, initial_word_value
+;   Bool varname, 0_or_1
+;   Ptr  varname, address_or_0
+;   STR  varname, "null-terminated text"
+;   STRBUF  varname, byte_count       ; zero-filled byte buffer
+;   WORDBUF varname, word_count       ; zero-filled word array
+; =============================================================================
+
+%macro U8 2
+%1: db %2
+%endmacro
+
+%macro I8 2
+%1: db %2
+%endmacro
+
+%macro U16 2
+%1: dw %2
+%endmacro
+
+%macro I16 2
+%1: dw %2
+%endmacro
+
+%macro Bool 2
+%1: db %2
+%endmacro
+
+%macro Ptr 2
+%1: dw %2
+%endmacro
+
+%macro STR 2
+%1: db %2, 0
+%endmacro
+
+%macro STRBUF 2
+%1: times %2 db 0
+%endmacro
+
+%macro WORDBUF 2
+%1: times %2 dw 0
+%endmacro
+
+; =============================================================================
+; FUNCTION DEFINITION MACROS
+;
+;   FN RetType, FuncName    -- declare a function label
+;                              RetType is purely documentary (U0, U8, U16…)
+;   ENDFN                   -- end function with near RET
+;   ENDFNF                  -- end function with far RETF
+;                              (for overlays that are far-called by the kernel)
+;
+; Example:
+;   FN U0, my_func
+;       PrintLn str_hello
+;   ENDFN
+; =============================================================================
+
+%macro FN 2
+%2:
+%endmacro
+
+%macro ENDFN 0
+    ret
+%endmacro
+
+%macro ENDFNF 0
+    retf
+%endmacro
+
+; =============================================================================
+; SAVE / RESTORE REGISTERS
+;
+;   PUSH_ALL   -- push AX BX CX DX SI DI
+;   POP_ALL    -- pop  DI SI DX CX BX AX
+;   PUSH_REGS  -- alias for PUSH_ALL
+;   POP_REGS   -- alias for POP_ALL
+; =============================================================================
+
+%macro PUSH_ALL 0
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+%endmacro
+
+%macro POP_ALL 0
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+%endmacro
+
+%macro PUSH_REGS 0
+    PUSH_ALL
+%endmacro
+
+%macro POP_REGS 0
+    POP_ALL
+%endmacro
+
+; =============================================================================
+; VIDEO / OUTPUT MACROS
+;
+;   Print    str_label       -- print null-terminated string (no newline)
+;   PrintLn  str_label       -- print string + newline
+;   PrintChar char_or_reg    -- print single character (AL)
+;   NewLine                  -- print a newline
+;   PrintHexB reg_or_val     -- print AL as 2-digit hex
+;   PrintDec  reg_or_val     -- print AX as unsigned decimal
+;   SetColor  color_const    -- set text attribute (HC_CYAN, YELLOW, etc.)
+;   ClearScreen              -- clear the screen
+;   Banner color, str_label  -- print a colored heading line
+; =============================================================================
+
+%macro Print 1
+    mov si, %1
+    call vid_print
+%endmacro
+
+%macro PrintLn 1
+    mov si, %1
+    call vid_println
+%endmacro
+
+%macro PrintChar 1
+    mov al, %1
+    call vid_putchar
+%endmacro
+
+%macro NewLine 0
+    call vid_nl
+%endmacro
+
+%macro PrintHexB 1
+    mov al, %1
+    call print_hex_byte
+%endmacro
+
+%macro PrintDec 1
+    mov ax, %1
+    call print_word_dec
+%endmacro
+
+%macro SetColor 1
+    mov al, %1
+    call vid_set_attr
+%endmacro
+
+%macro ClearScreen 0
+    call vid_clear
+%endmacro
+
+%macro Banner 2
+    SetColor %1
+    PrintLn  %2
+    SetColor LTGRAY
+%endmacro
+
+; =============================================================================
+; KEYBOARD / INPUT MACROS
+;
+;   GetKey              -- wait for keypress; AL = ASCII, AH = scancode
+;   CheckKey            -- poll keyboard (non-blocking); ZF=1 if no key
+;   ReadLine buf, max   -- read a line into buf (max bytes incl. NUL)
+; =============================================================================
+
+%macro GetKey 0
+    call kbd_getkey
+%endmacro
+
+%macro CheckKey 0
+    call kbd_check
+%endmacro
+
+%macro ReadLine 2
+    mov si, %1
+    mov cx, %2
+    call kbd_readline
+%endmacro
+
+; =============================================================================
+; STRING MACROS
+;
+;   StrLen  src          -- call str_len;  CX = length of DS:src
+;   StrCopy src, dst     -- call str_copy; copies DS:src → DS:dst
+;   StrCmp  s1, s2       -- call str_cmp;  ZF=1 if equal
+;   StrUC   al           -- call _uc_al;   AL uppercased
+; =============================================================================
+
+%macro StrLen 1
+    mov si, %1
+    call str_len
+%endmacro
+
+%macro StrCopy 2
+    mov si, %1
+    mov di, %2
+    call str_copy
+%endmacro
+
+%macro StrCmp 2
+    mov si, %1
+    mov di, %2
+    call str_cmp
+%endmacro
+
+%macro StrUC 1
+    mov al, %1
+    call _uc_al
+%endmacro
+
+; =============================================================================
+; FAT / DISK MACROS
+;
+;   FindFile name11       -- fat_find with SI=11-byte FAT name; CF=0 if found
+;   LoadFile cluster,dst  -- fat_read_file; AX=cluster, DI=buffer
+;   RunOverlay name11     -- load + far-call an overlay by FAT 8.3 name
+; =============================================================================
+
+%macro FindFile 1
+    mov si, %1
+    call fat_find
+%endmacro
+
+%macro LoadFile 2
+    mov ax, %1
+    mov di, %2
+    call fat_read_file
+%endmacro
+
+%macro RunOverlay 1
+    mov si, %1
+    call ovl_load_run
+%endmacro
+
+; =============================================================================
+; ERROR / CARRY FLAG HELPERS
+;
+;   ON_ERROR  label   -- jump to label if CF=1
+;   ON_OK     label   -- jump to label if CF=0 (success)
+; =============================================================================
+
+%macro ON_ERROR 1
+    jc %1
+%endmacro
+
+%macro ON_OK 1
+    jnc %1
+%endmacro
+
+; =============================================================================
+; STRUCTURED CONTROL FLOW
+; Implemented with NASM's context stack (%push / %pop / %$label).
+; This allows correct nesting of IF/WHILE blocks.
+;
+; ---- IF / ELSE / ENDIF --------------------------------------------------
+;
+;   The condition is evaluated BEFORE calling IF.
+;   IF takes the condition-code suffix that should PASS (keep executing):
+;
+;     cmp ax, 5
+;     IF e              ; "execute body if equal"
+;       ...
+;     ELSE              ; optional
+;       ...
+;     ENDIF
+;
+;   Supported suffixes: e ne z nz g ge l le a ae b be c nc s ns o no
+;
+;   High-level convenience variants (include the cmp):
+;
+;     IF_EQ  reg, val   ; cmp + jump if equal
+;     IF_NE  reg, val   ; cmp + jump if not equal
+;     IF_ZERO  reg      ; test + jump if zero
+;     IF_NZERO reg      ; test + jump if not zero
+;     IF_CARRY          ; raw CF check
+;     IF_NOCARRY        ; raw CF check
+; =============================================================================
+
+; Generic IF (condition already set by preceding cmp/test)
+; %1 = condition code to KEEP (e.g. "e" = keep if equal, skip if not equal)
+%macro IF 1
+    %push if_ctx
+    j%-1 %$ifelse
+%endmacro
+
+%macro ELSE 0
+    %ifctx if_ctx
+        %repl else_ctx
+        jmp %$ifend
+        %$ifelse:
+    %else
+        %error "HolyC16: ELSE without IF"
+    %endif
+%endmacro
+
+%macro ENDIF 0
+    %ifctx if_ctx
+        %$ifelse:
+        %pop
+    %elifctx else_ctx
+        %$ifend:
+        %pop
+    %else
+        %error "HolyC16: ENDIF without IF/ELSE"
+    %endif
+%endmacro
+
+; High-level IF variants with built-in comparison
+%macro IF_EQ 2
+    %push if_ctx
+    cmp %1, %2
+    jne %$ifelse
+%endmacro
+
+%macro IF_NE 2
+    %push if_ctx
+    cmp %1, %2
+    je %$ifelse
+%endmacro
+
+%macro IF_LT 2
+    %push if_ctx
+    cmp %1, %2
+    jge %$ifelse
+%endmacro
+
+%macro IF_GT 2
+    %push if_ctx
+    cmp %1, %2
+    jle %$ifelse
+%endmacro
+
+%macro IF_ZERO 1
+    %push if_ctx
+    test %1, %1
+    jnz %$ifelse
+%endmacro
+
+%macro IF_NZERO 1
+    %push if_ctx
+    test %1, %1
+    jz %$ifelse
+%endmacro
+
+%macro IF_CARRY 0
+    %push if_ctx
+    jnc %$ifelse
+%endmacro
+
+%macro IF_NOCARRY 0
+    %push if_ctx
+    jc %$ifelse
+%endmacro
+
+; =============================================================================
+; ---- WHILE / ENDWHILE / BREAK_IF ----------------------------------------
+;
+;   WHILE                ; plain loop header (use BREAK_IF for exit)
+;     ...
+;     BREAK_IF e         ; break if equal (condition-code suffix)
+;     ...
+;   ENDWHILE
+;
+;   Convenience variants with built-in comparison:
+;
+;   WHILE_NE   reg, val  ; while (reg != val)
+;   WHILE_EQ   reg, val  ; while (reg == val)
+;   WHILE_NZERO reg      ; while (reg != 0)
+;   WHILE_ZERO  reg      ; while (reg == 0)
+;
+; BREAK_IF works inside ANY while variant.
+; =============================================================================
+
+%macro WHILE 0
+    %push while_ctx
+    %$whilestart:
+%endmacro
+
+%macro BREAK_IF 1
+    %ifctx while_ctx
+        j%1 %$whileend
+    %else
+        %error "HolyC16: BREAK_IF used outside WHILE"
+    %endif
+%endmacro
+
+%macro ENDWHILE 0
+    %ifctx while_ctx
+        jmp %$whilestart
+        %$whileend:
+        %pop
+    %else
+        %error "HolyC16: ENDWHILE without WHILE"
+    %endif
+%endmacro
+
+; Convenience WHILE variants
+%macro WHILE_NE 2
+    %push while_ctx
+    %$whilestart:
+    cmp %1, %2
+    je %$whileend
+%endmacro
+
+%macro WHILE_EQ 2
+    %push while_ctx
+    %$whilestart:
+    cmp %1, %2
+    jne %$whileend
+%endmacro
+
+%macro WHILE_LT 2
+    %push while_ctx
+    %$whilestart:
+    cmp %1, %2
+    jge %$whileend
+%endmacro
+
+%macro WHILE_GT 2
+    %push while_ctx
+    %$whilestart:
+    cmp %1, %2
+    jle %$whileend
+%endmacro
+
+%macro WHILE_NZERO 1
+    %push while_ctx
+    %$whilestart:
+    test %1, %1
+    jz %$whileend
+%endmacro
+
+%macro WHILE_ZERO 1
+    %push while_ctx
+    %$whilestart:
+    test %1, %1
+    jnz %$whileend
+%endmacro
+
+; =============================================================================
+; ---- LOOP_CX / ENDLOOP --------------------------------------------------
+;
+;   LOOP_CX count    ; set CX and start counted loop
+;     ...
+;   ENDLOOP          ; uses the x86 LOOP instruction (dec CX, jnz)
+; =============================================================================
+
+%macro LOOP_CX 1
+    %push loop_ctx
+    mov cx, %1
+    %$loopstart:
+%endmacro
+
+%macro ENDLOOP 0
+    %ifctx loop_ctx
+        loop %$loopstart
+        %pop
+    %else
+        %error "HolyC16: ENDLOOP without LOOP_CX"
+    %endif
+%endmacro
+
+; =============================================================================
+; OVERLAY BOILERPLATE MACRO
+;
+;   OVL_HEADER   -- emits BITS/ORG/includes for a standard overlay
+;                   Place at top of overlay file; define data + FN after.
+;
+;   OVL_HEADER_BIOS -- for overlays that run without kernel (setup1/setup2)
+;                       omits kernel API includes (uses raw BIOS only)
+; =============================================================================
+
+%macro OVL_HEADER 0
+BITS 16
+ORG OVERLAY_BUF
+%include "ovl_api.asm"
+%include "holyc16.mac"
+%endmacro
+
+%macro OVL_HEADER_BIOS 0
+BITS 16
+ORG 0x7000
+%endmacro
+
+; =============================================================================
+; MISC UTILITIES
+;
+;   HALT         -- cli + hlt (infinite halt)
+;   NOP_DELAY n  -- n no-operation instructions for short software delay
+; =============================================================================
+
+%macro HALT 0
+    cli
+%%halt_loop:
+    hlt
+    jmp %%halt_loop
+%endmacro
+
+%macro NOP_DELAY 1
+    %rep %1
+        nop
+    %endrep
+%endmacro
+
+%endif ; HOLYC16_MAC

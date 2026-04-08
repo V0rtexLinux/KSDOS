@@ -1,0 +1,40 @@
+name: KSDOS Raspberry Pi Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-raspberry:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Build Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          nasm \
+          make \
+          perl \
+          qemu-utils \
+          tar
+
+    - name: Build KSDOS and Prepare Deploy
+      run: |
+        make deploy
+
+    - name: Rename Package for Clarity
+      run: |
+        mkdir -p release-package
+        mv build/ksdos-watch.tar.gz release-package/ksdos-watch-rpi.tar.gz
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ksdos-watch-package
+        path: release-package/ksdos-watch-rpi.tar.gz
+        retention-days: 5

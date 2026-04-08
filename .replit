@@ -1,0 +1,39 @@
+modules = ["bash", "python-3.11"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["nasm", "qemu", "gcc-unwrapped", "binutils", "gnumake", "p7zip"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace && make image && make run"
+
+[workflows.workflow.metadata]
+outputType = "vnc"
+
+[[workflows.workflow]]
+name = "git clone"
+mode = "sequential"
+author = 52444163
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git clone https://github.com/microsoft/MS-DOS.git"

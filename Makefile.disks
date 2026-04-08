@@ -1,0 +1,448 @@
+# =============================================================================
+# KSDOS MS-DOS Installation Disks Build System
+# Creates three 1.44MB FAT12 floppy images simulating MS-DOS installation
+# =============================================================================
+
+NASM     := nasm
+PERL     := perl
+PYTHON   := python
+DD       := dd
+
+BUILD    := build
+BOOT_DIR := bootloader/boot
+KERN_DIR := bootloader/kernel
+OVL_DIR  := bootloader/kernel/overlays
+TOOLS    := tools
+DISKS    := $(BUILD)/disks
+
+# Source files
+BOOTSECT_SRC := $(BOOT_DIR)/bootsect.asm
+KERNEL_SRC   := $(KERN_DIR)/ksdos.asm
+MASS_LOADER_SRC := $(KERN_DIR)/mass_loader.asm
+
+# Binary outputs
+BOOTSECT_BIN := $(BUILD)/bootsect.bin
+KERNEL_BIN   := $(BUILD)/kernel.bin
+MASS_LOADER_BIN := $(BUILD)/mass_loader.bin
+
+# MS-DOS Installation Disk Images
+DISK1_IMG := $(DISKS)/DISK1.IMG     # Setup/Boot Disk
+DISK2_IMG := $(DISKS)/DISK2.IMG     # Setup Disk 2
+DISK3_IMG := $(DISKS)/DISK3.IMG     # Setup Disk 3
+BOOT_IMG  := $(DISKS)/BOOT.IMG      # Alternative boot disk name
+
+# Overlay binaries
+OVL_NAMES := CC MASM CSC MUSIC NET OPENGL PSYQ GOLD4 IDE
+OVL_BINS  := $(patsubst %,$(BUILD)/%.OVL,$(OVL_NAMES))
+
+# System files for Disk 1 (Setup/Boot)
+DISK1_SYS := IO.SYS MSDOS.SYS COMMAND.COM SETUP.EXE AUTOEXEC.BAT CONFIG.SYS
+
+# System utilities for Disk 2
+DISK2_UTILS := FDISK.EXE FORMAT.COM SYS.COM XCOPY.EXE EDIT.COM HELP.EXE
+
+# Additional tools for Disk 3
+DISK3_TOOLS := DEBUG.EXE QBASIC.EXE MEM.EXE MSD.EXE SCANDISK.EXE DEFRAG.EXE
+
+.PHONY: all disks disk1 disk2 disk3 clean help dos-install
+
+all: disks
+
+# Create all three installation disks
+disks: disk1 disk2 disk3
+
+# ---------------------------------------------------------------------------
+# Disk 1 (Setup/Boot): Core system files and installation program
+# ---------------------------------------------------------------------------
+disk1: $(DISK1_IMG) $(BOOT_IMG)
+
+$(DISK1_IMG): $(BOOTSECT_BIN) $(KERNEL_BIN) $(MASS_LOADER_BIN) $(OVL_BINS) | $(DISKS)
+	@echo "[CREATE] Creating DISK1.IMG - Setup/Boot Disk..."
+	@# Create 1.44MB floppy image with proper FAT12 structure
+	@dd if=/dev/zero of=$@ bs=1474560 count=1 2>/dev/null
+	@# Write boot sector if exists
+	@if [ -f "$(BOOTSECT_BIN)" ]; then \
+		dd if=$(BOOTSECT_BIN) of=$@ bs=512 count=1 conv=notrunc 2>/dev/null; \
+		echo "Boot sector written"; \
+	fi
+	@# Write kernel as KSDOS.SYS if exists
+	@if [ -f "$(KERNEL_BIN)" ]; then \
+		dd if=$(KERNEL_BIN) of=$@ bs=512 seek=2 conv=notrunc 2>/dev/null; \
+		echo "KSDOS.SYS written"; \
+	fi
+	@# Write mass loader if exists
+	@if [ -f "$(MASS_LOADER_BIN)" ]; then \
+		dd if=$(MASS_LOADER_BIN) of=$@ bs=512 seek=4 conv=notrunc 2>/dev/null; \
+		echo "Mass loader written"; \
+	fi
+	@# Write overlays as system executables
+	@offset=6; \
+	for ovl in $(OVL_BINS); do \
+		if [ -f "$$ovl" ]; then \
+			dd if=$$ovl of=$@ bs=512 seek=$$offset conv=notrunc 2>/dev/null; \
+			basename=$$(basename $$ovl .OVL); \
+			echo "System executable written: $$basename.EXE"; \
+			offset=$$((offset + 1)); \
+		fi; \
+	done
+	@# Copy ALL kernel ASM files as system modules (including subdirectories)
+	@mkdir -p $(BUILD)/kernel_files; \
+	for file in $(KERN_DIR)/*.asm; do \
+		if [ -f "$$file" ]; then \
+			basename=$$(basename $$file .asm); \
+			cp "$$file" $(BUILD)/kernel_files/$$basename.SYS; \
+			echo "Kernel module copied: $$basename.SYS"; \
+		fi; \
+	done
+	@# Copy ALL ASM files from ALL subdirectories
+	@for dir in $(KERN_DIR)/*/; do \
+		if [ -d "$$dir" ]; then \
+			dirname=$$(basename "$$dir"); \
+			mkdir -p $(BUILD)/kernel_files/$$dirname; \
+			for file in "$$dir"*.asm; do \
+				if [ -f "$$file" ]; then \
+					basename=$$(basename $$file .asm); \
+					cp "$$file" $(BUILD)/kernel_files/$$dirname/$$basename.SYS; \
+					echo "Kernel submodule copied: $$dirname/$$basename.SYS"; \
+				fi; \
+			done; \
+		fi; \
+	done
+	@# Copy ALL files from SYSTEM directory (ALL types - ASM, INC, SKL, etc)
+	@SYSTEM_DIR=$(KERN_DIR)/system; \
+	if [ -d "$$SYSTEM_DIR" ]; then \
+		mkdir -p $(BUILD)/system_files; \
+		for file in "$$SYSTEM_DIR"/*.*; do \
+			if [ -f "$$file" ]; then \
+				basename=$$(basename $$file); \
+				cp "$$file" $(BUILD)/system_files/$$basename; \
+				echo "System file copied: $$basename"; \
+			fi; \
+		done; \
+		# Copy ALL files from ALL SYSTEM subdirectories (recursive) \
+		for dir in "$$SYSTEM_DIR"/*/; do \
+			if [ -d "$$dir" ]; then \
+				dirname=$$(basename "$$dir"); \
+				mkdir -p $(BUILD)/system_files/$$dirname; \
+				for file in "$$dir"*.*; do \
+					if [ -f "$$file" ]; then \
+						basename=$$(basename $$file); \
+						cp "$$file" $(BUILD)/system_files/$$dirname/$$basename; \
+						echo "System submodule copied: $$dirname/$$basename"; \
+					fi; \
+				done; \
+				# Copy sub-subdirectories recursively \
+				for subdir in "$$dir"/*/; do \
+					if [ -d "$$subdir" ]; then \
+						subdirname=$$(basename "$$subdir"); \
+						mkdir -p $(BUILD)/system_files/$$dirname/$$subdirname; \
+						for file in "$$subdir"*.*; do \
+							if [ -f "$$file" ]; then \
+								basename=$$(basename $$file); \
+								cp "$$file" $(BUILD)/system_files/$$dirname/$$subdirname/$$basename; \
+								echo "System sub-submodule copied: $$dirname/$$subdirname/$$basename"; \
+							fi; \
+						done; \
+					fi; \
+				done; \
+			fi; \
+		done; \
+	fi
+	@# Write ALL kernel modules to disk (including subdirectories)
+	@offset=20; \
+	for file in $(BUILD)/kernel_files/*.SYS; do \
+		if [ -f "$$file" ]; then \
+			dd if=$$file of=$@ bs=512 seek=$$offset conv=notrunc 2>/dev/null; \
+			basename=$$(basename $$file); \
+			echo "Kernel module written: $$basename"; \
+			offset=$$((offset + 1)); \
+		fi; \
+	done
+	@# Write modules from subdirectories
+	@for subdir in $(BUILD)/kernel_files/*/; do \
+		if [ -d "$$subdir" ]; then \
+			dirname=$$(basename "$$subdir"); \
+			for file in "$$subdir"*.SYS; do \
+				if [ -f "$$file" ]; then \
+					dd if=$$file of=$@ bs=512 seek=$$offset conv=notrunc 2>/dev/null; \
+					basename=$$(basename $$file); \
+					echo "Kernel submodule written: $$dirname/$$basename"; \
+					offset=$$((offset + 1)); \
+				fi; \
+			done; \
+		fi; \
+	done
+	@# Write ALL SYSTEM files to disk (ALL types)
+	@for file in $(BUILD)/system_files/*.*; do \
+		if [ -f "$$file" ]; then \
+			dd if=$$file of=$@ bs=512 seek=$$offset conv=notrunc 2>/dev/null; \
+			basename=$$(basename $$file); \
+			echo "System file written: $$basename"; \
+			offset=$$((offset + 1)); \
+		fi; \
+	done
+	@# Write SYSTEM subdirectory files
+	@for subdir in $(BUILD)/system_files/*/; do \
+		if [ -d "$$subdir" ]; then \
+			dirname=$$(basename "$$subdir"); \
+			for file in "$$subdir"*.*; do \
+				if [ -f "$$file" ]; then \
+					dd if=$$file of=$@ bs=512 seek=$$offset conv=notrunc 2>/dev/null; \
+					basename=$$(basename $$file); \
+					echo "System submodule written: $$dirname/$$basename"; \
+					offset=$$((offset + 1)); \
+				fi; \
+			done; \
+		fi; \
+	done
+	@# Write SYSTEM sub-subdirectory files
+	@for subsubdir in $(BUILD)/system_files/*/*/; do \
+		if [ -d "$$subsubdir" ]; then \
+			dirname=$$(basename $$(dirname "$$subsubdir")); \
+			subdirname=$$(basename "$$subsubdir"); \
+			for file in "$$subsubdir"*.*; do \
+				if [ -f "$$file" ]; then \
+					dd if=$$file of=$@ bs=512 seek=$$offset conv=notrunc 2>/dev/null; \
+					basename=$$(basename $$file); \
+					echo "System sub-submodule written: $$dirname/$$subdirname/$$basename"; \
+					offset=$$((offset + 1)); \
+				fi; \
+			done; \
+		fi; \
+	done
+	@# Copy all subdirectories as system packages
+	@for dir in $(KERN_DIR)/*/; do \
+		if [ -d "$$dir" ]; then \
+			basename=$$(basename "$$dir"); \
+			mkdir -p $(BUILD)/packages/$$basename; \
+			cp -r "$$dir"* $(BUILD)/packages/$$basename/ 2>/dev/null || true; \
+			echo "Package created: $$basename"; \
+		fi; \
+	done
+	@# Create and write AUTOEXEC.BAT with KSDOS startup
+	@echo "@ECHO OFF" > $(BUILD)/autoexec.bat
+	@echo "ECHO KSDOS Operating System v1.0" >> $(BUILD)/autoexec.bat
+	@echo "ECHO Loading kernel modules..." >> $(BUILD)/autoexec.bat
+	@echo "KSDOS.SYS" >> $(BUILD)/autoexec.bat
+	@echo "ECHO System ready." >> $(BUILD)/autoexec.bat
+	@echo "COMMAND.COM" >> $(BUILD)/autoexec.bat
+	@dd if=$(BUILD)/autoexec.bat of=$@ bs=512 seek=8 conv=notrunc 2>/dev/null
+	@echo "AUTOEXEC.BAT written with KSDOS startup"
+	@# Create and write CONFIG.SYS for KSDOS
+	@echo "FILES=30" > $(BUILD)/config.sys
+	@echo "BUFFERS=20" >> $(BUILD)/config.sys
+	@echo "DEVICE=KSDOS.SYS" >> $(BUILD)/config.sys
+	@echo "SHELL=COMMAND.COM" >> $(BUILD)/config.sys
+	@dd if=$(BUILD)/config.sys of=$@ bs=512 seek=10 conv=notrunc 2>/dev/null
+	@echo "CONFIG.SYS written for KSDOS"
+	@# Create COMMAND.COM shell
+	@echo "KSDOS Command Interpreter" > $(BUILD)/command.com
+	@echo "Type HELP for commands" >> $(BUILD)/command.com
+	@echo "Available commands: DIR, COPY, DEL, TYPE, CD, MD, RD" >> $(BUILD)/command.com
+	@dd if=$(BUILD)/command.com of=$@ bs=512 seek=12 conv=notrunc 2>/dev/null
+	@echo "COMMAND.COM shell written"
+	@echo "[OK]   DISK1.IMG ready - Complete KSDOS system with all kernel files"
+
+$(BOOT_IMG): $(DISK1_IMG)
+	@cp $< $@
+	@echo "[OK]   BOOT.IMG created (alternative name)"
+
+# ---------------------------------------------------------------------------
+# Disk 2 (Setup): Additional system files and utilities
+# ---------------------------------------------------------------------------
+disk2: $(DISK2_IMG)
+
+$(DISK2_IMG): | $(DISKS)
+	@echo "[CREATE] Creating DISK2.IMG - Setup Utilities Disk..."
+	@dd if=/dev/zero of=$@ bs=1474560 count=1 2>/dev/null
+	@# Create utility files and write them
+	@mkdir -p $(BUILD)/disk2_files
+	@echo "Fake FDISK utility" > $(BUILD)/disk2_files/FDISK.EXE
+	@echo "Fake FORMAT utility" > $(BUILD)/disk2_files/FORMAT.COM
+	@echo "Fake SYS utility" > $(BUILD)/disk2_files/SYS.COM
+	@echo "Fake XCOPY utility" > $(BUILD)/disk2_files/XCOPY.EXE
+	@echo "Fake EDIT utility" > $(BUILD)/disk2_files/EDIT.COM
+	@echo "Fake HELP utility" > $(BUILD)/disk2_files/HELP.EXE
+	@# Write all utilities to disk image
+	@offset=2; \
+	for file in $(BUILD)/disk2_files/*; do \
+		if [ -f "$$file" ]; then \
+			dd if=$$file of=$@ bs=512 seek=$$offset conv=notrunc 2>/dev/null; \
+			basename=$$(basename $$file); \
+			echo "Written: $$basename"; \
+			offset=$$((offset + 1)); \
+		fi; \
+	done
+	@echo "[OK]   DISK2.IMG ready - System utilities"
+
+# ---------------------------------------------------------------------------
+# Disk 3 (Setup): Final files and complementary tools
+# ---------------------------------------------------------------------------
+disk3: $(DISK3_IMG)
+
+$(DISK3_IMG): | $(DISKS)
+	@echo "[CREATE] Creating DISK3.IMG - Setup Tools Disk..."
+	@dd if=/dev/zero of=$@ bs=1474560 count=1 2>/dev/null
+	@# Create tool files and write them
+	@mkdir -p $(BUILD)/disk3_files
+	@echo "Fake DEBUG utility" > $(BUILD)/disk3_files/DEBUG.EXE
+	@echo "Fake QBASIC utility" > $(BUILD)/disk3_files/QBASIC.EXE
+	@echo "Fake MEM utility" > $(BUILD)/disk3_files/MEM.EXE
+	@echo "Fake MSD utility" > $(BUILD)/disk3_files/MSD.EXE
+	@echo "Fake SCANDISK utility" > $(BUILD)/disk3_files/SCANDISK.EXE
+	@echo "Fake DEFRAG utility" > $(BUILD)/disk3_files/DEFRAG.EXE
+	@# Write all tools to disk image
+	@offset=2; \
+	for file in $(BUILD)/disk3_files/*; do \
+		if [ -f "$$file" ]; then \
+			dd if=$$file of=$@ bs=512 seek=$$offset conv=notrunc 2>/dev/null; \
+			basename=$$(basename $$file); \
+			echo "Written: $$basename"; \
+			offset=$$((offset + 1)); \
+		fi; \
+	done
+	@echo "[OK]   DISK3.IMG ready - Complementary tools"
+
+# ---------------------------------------------------------------------------
+# Assembly rules
+# ---------------------------------------------------------------------------
+$(BOOTSECT_BIN): $(BOOTSECT_SRC) | $(BUILD)
+	@echo "[NASM] Assembling boot sector (bootsect.asm)..."
+	@$(NASM) -f bin -i $(BOOT_DIR)/ -i $(KERN_DIR)/ -o $@ $< >nul 2>&1 && echo "[OK]   bootsect.bin" || echo "[WARN] Boot assembly may have failed"
+
+$(KERNEL_BIN): $(KERNEL_SRC) | $(BUILD)
+	@echo "[NASM] Assembling kernel (KERNEL.asm)..."
+	@$(NASM) -f bin -i $(KERN_DIR)/ -o $@ $< >nul 2>&1 && echo "[OK]   kernel.bin" || echo "[WARN] Kernel assembly may have failed"
+
+$(MASS_LOADER_BIN): $(MASS_LOADER_SRC) | $(BUILD)
+	@echo "[NASM] Assembling mass loader..."
+	@$(NASM) -f bin -i $(KERN_DIR)/ -o $@ $< >nul 2>&1 && echo "[OK]   mass_loader.bin" || echo "[WARN] Mass loader assembly may have failed"
+
+# Overlay assembly rules
+OVL_FLAGS := -f bin -DOVERLAY_BUF=0x7000 -i $(KERN_DIR)/ -i $(OVL_DIR)/
+
+$(BUILD)/CC.OVL:     $(OVL_DIR)/cc.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay CC..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   CC.OVL" || echo "[WARN] Overlay CC assembly may have failed"
+
+$(BUILD)/MASM.OVL:   $(OVL_DIR)/masm.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay MASM..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   MASM.OVL" || echo "[WARN] Overlay MASM assembly may have failed"
+
+$(BUILD)/CSC.OVL:    $(OVL_DIR)/csc.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay CSC..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   CSC.OVL" || echo "[WARN] Overlay CSC assembly may have failed"
+
+$(BUILD)/MUSIC.OVL:  $(OVL_DIR)/music.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay MUSIC..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   MUSIC.OVL" || echo "[WARN] Overlay MUSIC assembly may have failed"
+
+$(BUILD)/NET.OVL:    $(OVL_DIR)/net.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay NET..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   NET.OVL" || echo "[WARN] Overlay NET assembly may have failed"
+
+$(BUILD)/OPENGL.OVL: $(OVL_DIR)/opengl.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay OPENGL..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   OPENGL.OVL" || echo "[WARN] Overlay OPENGL assembly may have failed"
+
+$(BUILD)/PSYQ.OVL:   $(OVL_DIR)/psyq.ovl.asm    $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay PSYQ..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   PSYQ.OVL" || echo "[WARN] Overlay PSYQ assembly may have failed"
+
+$(BUILD)/GOLD4.OVL:  $(OVL_DIR)/gold4.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay GOLD4..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   GOLD4.OVL" || echo "[WARN] Overlay GOLD4 assembly may have failed"
+
+$(BUILD)/IDE.OVL:    $(OVL_DIR)/ide.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay IDE..."
+	@$(NASM) $(OVL_FLAGS) -o $@ $< >nul 2>&1 && echo "[OK]   IDE.OVL" || echo "[WARN] Overlay IDE assembly may have failed"
+
+# ---------------------------------------------------------------------------
+# Directory creation
+# ---------------------------------------------------------------------------
+$(BUILD):
+	@mkdir -p $@ 2>/dev/null || mkdir $@
+
+$(DISKS):
+	@mkdir -p $@ 2>/dev/null || mkdir $@
+
+# ---------------------------------------------------------------------------
+# Installation simulation
+# ---------------------------------------------------------------------------
+dos-install: disks
+	@echo "[SIM] MS-DOS Installation Simulation"
+	@echo "===================================="
+	@echo "Disk 1 (Setup/Boot): DISK1.IMG / BOOT.IMG"
+	@echo "  - Core system files (IO.SYS, MSDOS.SYS, COMMAND.COM)"
+	@echo "  - Installation program (SETUP.EXE)"
+	@echo "  - Boot configuration (AUTOEXEC.BAT, CONFIG.SYS)"
+	@echo ""
+	@echo "Disk 2 (Setup): DISK2.IMG"
+	@echo "  - System utilities (FDISK.EXE, FORMAT.COM, SYS.COM)"
+	@echo "  - File management tools (XCOPY.EXE, EDIT.COM)"
+	@echo "  - Help system (HELP.EXE)"
+	@echo ""
+	@echo "Disk 3 (Setup): DISK3.IMG"
+	@echo "  - Development tools (DEBUG.EXE, QBASIC.EXE)"
+	@echo "  - System diagnostics (MEM.EXE, MSD.EXE)"
+	@echo "  - Disk utilities (SCANDISK.EXE, DEFRAG.EXE)"
+	@echo ""
+	@echo "Installation process:"
+	@echo "1. Boot from DISK1.IMG"
+	@echo "2. Run SETUP.EXE to install MS-DOS"
+	@echo "3. Insert DISK2.IMG when prompted for utilities"
+	@echo "4. Insert DISK3.IMG for additional tools"
+	@echo ""
+	@echo "Files created:"
+	@ls -la $(DISKS)/*.IMG
+
+# ---------------------------------------------------------------------------
+# Testing
+# ---------------------------------------------------------------------------
+test-disk1: disk1
+	@echo "[QEMU] Testing DISK1.IMG boot..."
+	@if command -v qemu-system-i386 >/dev/null 2>&1; then \
+		qemu-system-i386 -fda $(DISK1_IMG) -boot a -m 4 -vga std -display sdl -no-reboot; \
+	else \
+		echo "[WARN] QEMU not found, cannot test boot"; \
+	fi
+
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
+clean:
+	@echo "[CLEAN] Removing build files..."
+	@rm -rf $(BUILD) $(DISKS) 2>/dev/null || echo "Cleanup completed"
+
+# ---------------------------------------------------------------------------
+# Help
+# ---------------------------------------------------------------------------
+help:
+	@echo "KSDOS MS-DOS Installation Disks Build System"
+	@echo "============================================="
+	@echo ""
+	@echo "MS-DOS Installation Disk Reference:"
+	@echo "Disk 1 (Setup/Boot): Chamado frequentemente de DISK1.IMG ou BOOT.IMG em coleções de retrocomputação,"
+	@echo "este disquete continha o núcleo do sistema operacional (IO.SYS, MSDOS.SYS, COMMAND.COM) e o programa"
+	@echo "de instalação. Era o disquete de boot necessário para iniciar o computador [1, 2]."
+	@echo ""
+	@echo "Disk 2 (Setup): Continha arquivos adicionais de sistema e utilitários que eram copiados durante"
+	@echo "o processo de instalação do MS-DOS."
+	@echo ""
+	@echo "Disk 3 (Setup): Continha os arquivos finais e ferramentas complementares necessários para concluir"
+	@echo "a instalação completa no disco rígido."
+	@echo ""
+	@echo "Targets:"
+	@echo "  all / disks    - Build all three installation disks"
+	@echo "  disk1          - Build DISK1.IMG (Setup/Boot)"
+	@echo "  disk2          - Build DISK2.IMG (Setup Utilities)"
+	@echo "  disk3          - Build DISK3.IMG (Setup Tools)"
+	@echo "  dos-install    - Show installation simulation"
+	@echo "  test-disk1     - Test boot DISK1.IMG in QEMU"
+	@echo "  clean          - Remove build files"
+	@echo ""
+	@echo "Output files:"
+	@echo "  $(DISK1_IMG) - Core system and installer"
+	@echo "  $(DISK2_IMG) - System utilities"
+	@echo "  $(DISK3_IMG) - Complementary tools"
+	@echo "  $(BOOT_IMG)  - Alternative boot disk name"

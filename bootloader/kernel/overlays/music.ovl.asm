@@ -1,0 +1,17 @@
+; =============================================================================
+; MUSIC.OVL  -  PC Speaker music player  (KSDOS)
+; Written in HolyC16 — the HolyC-inspired macro language for NASM 16-bit.
+; =============================================================================
+BITS 16
+ORG OVERLAY_BUF
+%include "ovl_api.asm"
+%include "holyc16.mac"
+
+; ---------------------------------------------------------------------------
+; U0 ovl_entry()
+; ---------------------------------------------------------------------------
+FN U0, ovl_entry
+    call music_run
+ENDFN
+
+%include "../music.asm"

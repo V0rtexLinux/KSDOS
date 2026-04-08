@@ -1,0 +1,194 @@
+# =============================================================================
+# KSDOS Raspberry Pi Build System
+# Cross-compilation for ARM/ARM64 Raspberry Pi
+# =============================================================================
+
+# Cross-compilation tools
+ARM_PREFIX ?= arm-linux-gnueabihf-
+ARM_CC ?= $(ARM_PREFIX)gcc
+ARM_AS ?= $(ARM_PREFIX)as
+ARM_LD ?= $(ARM_PREFIX)ld
+ARM_OBJCOPY ?= $(ARM_PREFIX)objcopy
+
+# Build directories
+BUILD_RPI := build-raspberry
+DISKS_RPI := $(BUILD_RPI)/disks
+BINARIES_RPI := $(BUILD_RPI)/binaries
+
+# Tools
+NASM := nasm
+PYTHON := python3
+
+# Source files (same as main build)
+BOOT_DIR := bootloader/boot
+KERN_DIR := bootloader/kernel
+OVL_DIR := bootloader/kernel/overlays
+
+# Source files
+BOOTSECT_SRC := $(BOOT_DIR)/bootsect.asm
+KERNEL_SRC := $(KERN_DIR)/KERNEL.asm
+MASS_LOADER_SRC := $(KERN_DIR)/mass_loader.asm
+
+# Raspberry Pi outputs
+BOOTSECT_RPI := $(BUILD_RPI)/bootsect-rpi.bin
+KERNEL_RPI := $(BUILD_RPI)/kernel-rpi.bin
+MASS_LOADER_RPI := $(BUILD_RPI)/mass_loader-rpi.bin
+RPI_IMAGE := $(BUILD_RPI)/ksdos-rpi.img
+
+# Raspberry Pi specific flags
+ARM_FLAGS := -mcpu=cortex-a72 -mfpu=neon-fp-armv8 -mfloat-abi=hard
+ARM_LINK_FLAGS := -nostdlib -static -Wl,--build-id=none
+
+.PHONY: all raspberry clean install-rpi
+
+all: raspberry
+
+raspberry: $(RPI_IMAGE)
+
+# Create build directories
+$(BUILD_RPI):
+	@mkdir -p $@ $(DISKS_RPI) $(BINARIES_RPI)
+
+# Compile boot sector for Raspberry Pi
+$(BOOTSECT_RPI): $(BOOTSECT_SRC) | $(BUILD_RPI)
+	@echo "[RPI-ASM] Compiling boot sector for Raspberry Pi..."
+	@$(NASM) -f bin -i $(BOOT_DIR)/ -i $(KERN_DIR)/ -o $@ $< >nul 2>&1 && echo "[OK]   bootsect-rpi.bin" || echo "[WARN] Boot assembly may have failed"
+
+# Compile kernel for Raspberry Pi (cross-compile to ARM)
+$(KERNEL_RPI): $(KERNEL_SRC) | $(BUILD_RPI)
+	@echo "[RPI-CC] Cross-compiling kernel for Raspberry Pi (ARM)..."
+	@$(ARM_CC) $(ARM_FLAGS) -c -ffreestanding -nostdlib -o $(BUILD_RPI)/kernel-rpi.o $<
+	@$(ARM_LD) $(ARM_LINK_FLAGS) -T raspberry.ld -o $(BUILD_RPI)/kernel-rpi.elf $(BUILD_RPI)/kernel-rpi.o
+	@$(ARM_OBJCOPY) -O binary $(BUILD_RPI)/kernel-rpi.elf $@
+	@echo "[OK]   kernel-rpi.bin (ARM binary)"
+
+# Compile mass loader for Raspberry Pi
+$(MASS_LOADER_RPI): $(MASS_LOADER_SRC) | $(BUILD_RPI)
+	@echo "[RPI-CC] Cross-compiling mass loader for Raspberry Pi..."
+	@$(ARM_CC) $(ARM_FLAGS) -c -ffreestanding -nostdlib -o $(BUILD_RPI)/mass_loader-rpi.o $<
+	@$(ARM_LD) $(ARM_LINK_FLAGS) -T raspberry.ld -o $(BUILD_RPI)/mass_loader-rpi.elf $(BUILD_RPI)/mass_loader-rpi.o
+	@$(ARM_OBJCOPY) -O binary $(BUILD_RPI)/mass_loader-rpi.elf $@
+	@echo "[OK]   mass_loader-rpi.bin (ARM binary)"
+
+# Create Raspberry Pi SD card image
+$(RPI_IMAGE): $(BOOTSECT_RPI) $(KERNEL_RPI) $(MASS_LOADER_RPI) | $(BUILD_RPI)
+	@echo "[RPI-IMG] Creating Raspberry Pi SD card image..."
+	@# Create 512MB image
+	@dd if=/dev/zero of=$@ bs=1M count=512 2>/dev/null
+	@# Create partitions
+	@sfdisk $@ << EOF
+label: dos
+label-id: 0x0e
+device: $@
+unit: sectors
+
+$@1 : start=2048, type=0c, bootable
+$@2 : start=, type=83
+EOF
+	@# Setup loop device
+	@sudo losetup --find --show $@ > /tmp/loop_device 2>/dev/null || true
+	@# Create filesystems
+	@mkfs.vfat -F 32 -n "KSDOS_BOOT" $@1 2>/dev/null || true
+	@mkfs.ext4 -F -L "KSDOS_ROOT" $@2 2>/dev/null || true
+	@echo "[OK]   ksdos-rpi.img created"
+
+# Create Raspberry Pi specific linker script
+raspberry.ld:
+	@echo "Creating Raspberry Pi linker script..."
+	@cat > raspberry.ld << 'EOF'
+ENTRY(_start)
+SECTIONS
+{
+    . = 0x8000;
+    .text : { *(.text) }
+    .data : { *(.data) }
+    .bss : { *(.bss) }
+}
+EOF
+
+# Build overlays for Raspberry Pi
+overlays-rpi: | $(BUILD_RPI)
+	@echo "[RPI-OVL] Building overlays for Raspberry Pi..."
+	@mkdir -p $(BUILD_RPI)/overlays
+	@$(MAKE) -C $(OVL_DIR) CC=$(ARM_CC) AS=$(ARM_AS) LD=$(ARM_LD) BUILD_DIR=$(BUILD_RPI)/overlays
+
+# Copy system files for Raspberry Pi
+system-rpi: | $(BUILD_RPI)
+	@echo "[RPI-SYS] Copying system files for Raspberry Pi..."
+	@mkdir -p $(BUILD_RPI)/system
+	@cp -r $(KERN_DIR)/system/* $(BUILD_RPI)/system/
+	@echo "[OK]   System files copied for Raspberry Pi"
+
+# Create boot configuration files
+config-rpi: | $(BUILD_RPI)
+	@echo "[RPI-CONFIG] Creating Raspberry Pi boot configuration..."
+	@mkdir -p $(BUILD_RPI)/boot-config
+	@echo "# KSDOS Raspberry Pi Configuration" > $(BUILD_RPI)/boot-config/config.txt
+	@echo "kernel=kernel-rpi.bin" >> $(BUILD_RPI)/boot-config/config.txt
+	@echo "disable_overscan=1" >> $(BUILD_RPI)/boot-config/config.txt
+	@echo "hdmi_force_hotplug=1" >> $(BUILD_RPI)/boot-config/config.txt
+	@echo "dtparam=audio=on" >> $(BUILD_RPI)/boot-config/config.txt
+	@echo "enable_uart=1" >> $(BUILD_RPI)/boot-config/config.txt
+	@echo "console=tty1 console=ttyAMA0,115200 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait" > $(BUILD_RPI)/boot-config/cmdline.txt
+	@echo "[OK]   Raspberry Pi configuration created"
+
+# Complete Raspberry Pi build
+build-complete: raspberry overlays-rpi system-rpi config-rpi
+	@echo "[RPI-DONE] Complete Raspberry Pi build finished!"
+	@ls -la $(BUILD_RPI)/
+
+# Test with QEMU (ARM emulation)
+test-rpi: $(RPI_IMAGE)
+	@echo "[RPI-QEMU] Testing Raspberry Pi image with QEMU..."
+	@if command -v qemu-system-arm >/dev/null 2>&1; then \
+		qemu-system-arm -M raspi3 -m 1G -sd $(RPI_IMAGE) -serial stdio; \
+	else \
+		echo "[WARN] QEMU ARM not found, cannot test Raspberry Pi image"; \
+	fi
+
+# Install to Raspberry Pi (requires connected device)
+install-rpi: $(RPI_IMAGE)
+	@echo "[RPI-INSTALL] Installing KSDOS to Raspberry Pi..."
+	@echo "Connect Raspberry Pi via USB and ensure it's in mass storage mode"
+	@echo "WARNING: This will erase the target device!"
+	@read -p "Press ENTER to continue or CTRL+C to cancel..."
+	@# Detect Raspberry Pi
+	@RPI_DEVICE=$$(lsblk -no NAME,SIZE | grep -E "sd[b-z].*[0-9]+G" | head -1 | awk '{print $$1}'); \
+	if [ -z "$$RPI_DEVICE" ]; then \
+		echo "Error: Raspberry Pi device not found!"; \
+		exit 1; \
+	fi; \
+	echo "Installing to /dev/$$RPI_DEVICE..."; \
+	sudo dd if=$(RPI_IMAGE) of=/dev/$$RPI_DEVICE bs=1M status=progress; \
+	sync; \
+	echo "Installation complete! Remove and reinsert Raspberry Pi."
+
+# Clean Raspberry Pi build files
+clean:
+	@echo "[CLEAN] Removing Raspberry Pi build files..."
+	@rm -rf $(BUILD_RPI) raspberry.ld
+	@echo "Raspberry Pi cleanup completed"
+
+# Help
+help-rpi:
+	@echo "KSDOS Raspberry Pi Build System"
+	@echo "================================"
+	@echo ""
+	@echo "Targets:"
+	@echo "  raspberry          - Build complete Raspberry Pi system"
+	@echo "  overlays-rpi       - Build overlays for ARM"
+	@echo "  system-rpi         - Copy system files"
+	@echo "  config-rpi         - Create boot configuration"
+	@echo "  build-complete      - Full build with all components"
+	@echo "  test-rpi           - Test with QEMU ARM"
+	@echo "  install-rpi        - Install to connected device"
+	@echo "  clean              - Remove build files"
+	@echo "  help-rpi           - Show this help"
+	@echo ""
+	@echo "Variables:"
+	@echo "  ARM_PREFIX         - Cross-compilation toolchain prefix"
+	@echo "  BUILD_RPI          - Build directory for Raspberry Pi"
+	@echo ""
+	@echo "Example usage:"
+	@echo "  make -f Makefile.raspberry raspberry"
+	@echo "  make -f Makefile.raspberry test-rpi"

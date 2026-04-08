@@ -1,0 +1,44 @@
+[Unit]
+Description=KSDOS Watch - DOS-like OS on Raspberry Pi TFT
+# Garante que a rede e o sistema de arquivos estejam prontos
+After=network.target local-fs.target multi-user.target
+Wants=multi-user.target
+
+[Service]
+Type=simple
+# Ajustado para o padrão do Makefile (usuário pi)
+User=pi
+Group=video
+
+# O Makefile sugere que o deploy vai para ~/ksdos-watch/
+# Ajustamos o WorkingDirectory para que o launch.sh encontre o disk.img
+WorkingDirectory=/home/pi/ksdos-watch
+
+# Variáveis para saída direta no TFT/LCD (via SDL 1.2 ou 2.0)
+Environment="SDL_FBDEV=/dev/fb1"
+Environment="SDL_VIDEODRIVER=fbcon"
+Environment="SDL_NOMOUSE=1"
+# Se estiver usando QEMU dentro do launch.sh, isso ajuda a evitar erros de X11
+Environment="QT_QPA_PLATFORM=offscreen"
+
+# Caminho baseado no seu comando 'make deploy'
+ExecStart=/home/pi/ksdos-watch/launch.sh
+
+# Reinicia automaticamente se travar ou se o QEMU fechar
+Restart=always
+RestartSec=3
+
+# Permissões de hardware necessárias para o Raspberry Pi
+# 'input' para teclado/botões, 'video' para o TFT
+SupplementaryGroups=video input
+DeviceAllow=/dev/uinput rw
+DeviceAllow=/dev/fb1 rw
+DeviceAllow=/dev/input/event* rw
+
+# Organização de Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ksdos-watch
+
+[Install]
+WantedBy=multi-user.target
