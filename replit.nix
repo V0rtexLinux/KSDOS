@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.gh
     pkgs.p7zip
     pkgs.gnumake
     pkgs.binutils
