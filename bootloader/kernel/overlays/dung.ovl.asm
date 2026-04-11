@@ -258,7 +258,8 @@ dg_gen_floor:
     mov bx, MCOLS
     mul bx
     add ax, [exit_x]
-    mov byte [mapdata + ax], T_EXIT
+    mov bx, ax
+    mov byte [mapdata + bx], T_EXIT
     ; Player start
     mov word [px], 2
     mov word [py], 2
@@ -451,7 +452,8 @@ dg_attack_adjacent:
     cmp bx, -1
     jl .aa_skip
     ; Attack!
-    sub word [ehp + si], [patk]
+    mov ax, [patk]
+    sub word [ehp + si], ax
     cmp word [ehp + si], 0
     jg .aa_skip
     mov word [ealive + si], 0

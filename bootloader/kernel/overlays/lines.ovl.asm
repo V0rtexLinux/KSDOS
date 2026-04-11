@@ -264,26 +264,31 @@ ln_check_lines:
     push bx
     push cx
     push si
+    push di
+    mov di, si
+    add di, bx        ; di = absolute grid index (row start + col)
     mov cx, 4
-    mov dx, bx
 .h5:
-    inc dx
-    cmp [grid + si + dx], al
+    inc di
+    cmp [grid + di], al
     jne .h5_fail
     loop .h5
     ; Found 5! Clear them
     mov cx, 5
-    mov dx, bx
+    mov di, si
+    add di, bx
 .h5cl:
-    mov byte [grid + si + dx], 0
-    inc dx
+    mov byte [grid + di], 0
+    inc di
     add word [score], 10
     loop .h5cl
+    pop di
     pop si
     pop cx
     pop bx
     jmp .h_col
 .h5_fail:
+    pop di
     pop si
     pop cx
     pop bx
@@ -317,26 +322,29 @@ ln_check_lines:
     push bx
     push cx
     push si
+    push di
     mov cx, 4
-    mov dx, si
+    mov di, si
 .v5:
-    add dx, GCOLS
-    cmp [grid + dx], al
+    add di, GCOLS
+    cmp [grid + di], al
     jne .v5_fail
     loop .v5
     ; Clear 5
     mov cx, 5
-    mov dx, si
+    mov di, si
 .v5cl:
-    mov byte [grid + dx], 0
-    add dx, GCOLS
+    mov byte [grid + di], 0
+    add di, GCOLS
     add word [score], 10
     loop .v5cl
+    pop di
     pop si
     pop cx
     pop bx
     jmp .v_row
 .v5_fail:
+    pop di
     pop si
     pop cx
     pop bx

@@ -305,7 +305,8 @@ mn_compute_adj:
     mov si, GCOLS
     mul si
     add ax, bx
-    mov [adj + ax], dl
+    mov si, ax
+    mov [adj + si], dl
     pop cx
     pop bx
     inc bx
@@ -337,7 +338,8 @@ mn_is_mine:
     mov dx, GCOLS
     mul dx
     add ax, bx
-    mov dl, [grid + ax]
+    mov si, ax
+    mov dl, [grid + si]
     and dl, 1
     pop dx
     pop bx
@@ -537,7 +539,8 @@ mn_draw_grid:
     mul cx
     pop cx
     add ax, cx
-    mov bl, [adj + ax]
+    mov si, ax
+    mov bl, [adj + si]
     test bl, bl
     jz .rv_skip
     ; Draw digit

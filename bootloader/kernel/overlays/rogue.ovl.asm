@@ -347,7 +347,8 @@ rg_carve_room:
     mov cx, MCOLS
     mul cx
     add ax, bx
-    mov byte [mapdata + ax], TILE_FLOOR
+    mov si, ax
+    mov byte [mapdata + si], TILE_FLOOR
     inc bx
     jmp .hcor
 .hcor_done:
@@ -363,7 +364,8 @@ rg_carve_room:
     mov cx, MCOLS
     mul cx
     add ax, bx
-    mov byte [mapdata + ax], TILE_FLOOR
+    mov si, ax
+    mov byte [mapdata + si], TILE_FLOOR
     inc dx
     jmp .vcor
 .vcor_done:
@@ -428,10 +430,11 @@ rg_fill_rect:
     push bx
     push cx
     add ax, bx
-    mov [mapdata + ax], byte TILE_FLOOR
+    mov si, ax
+    mov byte [mapdata + si], TILE_FLOOR
     pop cx
     pop bx
-    inc ax
+    mov ax, si
     ; Use a counter
     pop bx
     pop si
@@ -446,9 +449,10 @@ rg_fill_rect:
     mul cx
     add ax, [esp + 6]   ; bx (col start)
     mov cx, [esp + 2]   ; width
+    mov si, ax
 .fr_row_inner:
-    mov byte [mapdata + ax], TILE_FLOOR
-    inc ax
+    mov byte [mapdata + si], TILE_FLOOR
+    inc si
     loop .fr_row_inner
     pop bx
     pop si

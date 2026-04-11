@@ -308,7 +308,11 @@ FN U0, ovl_entry
     push si
     mov bx, [car_x + si]
     mov dx, [car_y + si]
-    mov al, [car_col + si / 2]
+    push bx
+    mov bx, si
+    shr bx, 1
+    mov al, [car_col + bx]
+    pop bx
     push ax
     mov ax, [car_w + si]
     push ax
