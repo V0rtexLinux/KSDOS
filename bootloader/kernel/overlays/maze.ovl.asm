@@ -8,7 +8,7 @@ ORG OVERLAY_BUF
 MCOLS   equ 19
 MROWS   equ 13
 CW      equ 16
-CH      equ 15
+CELL_H  equ 15
 OX      equ 4
 OY      equ 4
 
@@ -179,7 +179,7 @@ mz_draw_maze:
     add ax, OX
     mov si, ax          ; px
     mov ax, cx
-    imul ax, CH
+    imul ax, CELL_H
     add ax, OY
     mov di, ax          ; py
 
@@ -198,7 +198,7 @@ mz_draw_maze:
     push si
     add si, CW
     push di
-    add di, CH
+    add di, CELL_H
     mov al, 7
     call gl16_vline    ; Linha vertical na direita
     pop di
@@ -209,7 +209,7 @@ mz_draw_maze:
     jz .next_cell
     push si
     push di
-    add di, CH
+    add di, CELL_H
     mov cx, CW
     mov al, 7
     call gl16_hline    ; Linha horizontal na base
@@ -234,9 +234,9 @@ mz_draw_player:
     add ax, OX + 5
     mov bx, ax
 
-    ; Posição Y: (plr_y * CH) + OY + (CH/2 - 3)
+    ; Posição Y: (plr_y * CELL_H) + OY + (CELL_H/2 - 3)
     mov ax, [plr_y]
-    imul ax, CH
+    imul ax, CELL_H
     add ax, OY + 4
     mov dx, ax
 
