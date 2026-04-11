@@ -30,7 +30,7 @@ gfx_set_palette_entry:
     push dx
     mov ah, 0x10
     mov al, 0x10
-    xor bh, 0
+    xor bh, bh          ; FIX: was xor bh,0 (no-op) — must zero BH
     int 0x10
     pop dx
     pop cx
