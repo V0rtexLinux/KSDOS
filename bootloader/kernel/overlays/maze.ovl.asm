@@ -197,11 +197,9 @@ mz_draw_maze:
     jz .bot
     push si
     add si, CW
-    push di
-    add di, CELL_H
+    mov cx, CELL_H
     mov al, 7
-    call gl16_vline    ; Linha vertical na direita
-    pop di
+    call gl16_vline    ; Linha vertical na direita (SI=x, DI=y_start, CX=height, AL=colour)
     pop si
 .bot:
     ; Desenhar Parede Inferior (bit 1)
@@ -254,6 +252,22 @@ mz_draw_player:
     pop cx
     loop .draw_loop
 
+    popa
+    ret
+
+; gl16_vline: draw vertical line
+; SI=x, DI=y_start, CX=height, AL=colour
+gl16_vline:
+    pusha
+    mov bx, si
+    mov dx, di
+.vl_loop:
+    jcxz .vl_done
+    call gl16_pix
+    inc dx
+    dec cx
+    jmp .vl_loop
+.vl_done:
     popa
     ret
 
