@@ -1,7 +1,5 @@
 ; =============================================================================
-; ASTRO.OVL  -  Asteroids  (KSDOS 16-bit)
-; W=thrust, A/D=rotate, SPACE=fire.  ESC=quit.
-; Simplified: ship at centre, rocks move, shoot them.
+; ASTRO.OVL - Corrigido para endereçamento 16-bit válido
 ; =============================================================================
 BITS 16
 ORG OVERLAY_BUF
@@ -16,29 +14,26 @@ STR str_score, "Score:"
 STR str_dead,  "SHIP DESTROYED! Any key"
 STRBUF sbuf, 8
 
-; Ship state (fixed-point x16 for smooth movement)
 I16 ship_x,   160 * 16
 I16 ship_y,   100 * 16
 I16 ship_vx,  0
 I16 ship_vy,  0
-U16 ship_ang, 0         ; 0-359 degrees
+U16 ship_ang, 0
 U16 ship_alive, 1
 
-; Rocks: x,y,vx,vy (all *16 fixed), size (px radius)
 WORDBUF rock_x,  MAX_ROCKS
 WORDBUF rock_y,  MAX_ROCKS
 WORDBUF rock_vx, MAX_ROCKS
 WORDBUF rock_vy, MAX_ROCKS
-WORDBUF rock_sz, MAX_ROCKS  ; 0=dead
+WORDBUF rock_sz, MAX_ROCKS
 U16 rock_cnt, 0
 U16 lcg_seed, 0x4567
 
-; Bullets: x,y,vx,vy (*16)
 WORDBUF blet_x, MAX_BLETS
 WORDBUF blet_y, MAX_BLETS
 WORDBUF blet_vx, MAX_BLETS
 WORDBUF blet_vy, MAX_BLETS
-WORDBUF blet_life, MAX_BLETS   ; 0=dead
+WORDBUF blet_life, MAX_BLETS
 
 U16 score, 0
 U16 frame_cnt, 0
@@ -50,8 +45,6 @@ FN U0, ovl_entry
 
 .frame:
     inc word [frame_cnt]
-
-    ; Input
     mov ah, 0x01
     int 0x16
     jz .no_key
@@ -94,17 +87,15 @@ FN U0, ovl_entry
     mov [ship_ang], ax
     jmp .no_key
 .thrust:
-    ; Add velocity in direction of ship_ang
     mov ax, [ship_ang]
-    call fcos16          ; ax = cos*256
-    sar ax, 5            ; ax = cos*8
+    call fcos16
+    sar ax, 5
     add [ship_vx], ax
     mov ax, [ship_ang]
     call fsin16
     neg ax
     sar ax, 5
     add [ship_vy], ax
-    ; Clamp velocity
     mov ax, [ship_vx]
     cmp ax, 128
     jle .vx_ok
@@ -115,48 +106,41 @@ FN U0, ovl_entry
     jge .no_key
     mov word [ship_vx], -128
     jmp .no_key
+
 .fire:
-    ; Spawn bullet in current direction
-    mov cx, 0
+    mov si, 0
 .find_blet:
-    cmp cx, MAX_BLETS
+    cmp si, MAX_BLETS * 2
     jge .no_key
-    shl cx, 1
-    cmp word [blet_life + cx], 0
-    jne .next_blet
-    ; Free slot found
+    cmp word [blet_life + si], 0
+    je .found
+    add si, 2
+    jmp .find_blet
+.found:
     mov ax, [ship_x]
-    mov [blet_x + cx], ax
+    mov [blet_x + si], ax
     mov ax, [ship_y]
-    mov [blet_y + cx], ax
+    mov [blet_y + si], ax
     mov ax, [ship_ang]
     call fcos16
     sar ax, 2
     add ax, [ship_vx]
-    mov [blet_vx + cx], ax
+    mov [blet_vx + si], ax
     mov ax, [ship_ang]
     call fsin16
     neg ax
     sar ax, 2
     add ax, [ship_vy]
-    mov [blet_vy + cx], ax
-    mov word [blet_life + cx], 60
-    shr cx, 1
+    mov [blet_vy + si], ax
+    mov word [blet_life + si], 60
     jmp .no_key
-.next_blet:
-    shr cx, 1
-    inc cx
-    jmp .find_blet
 
 .no_key:
-    ; Move ship
     mov ax, [ship_vx]
     add [ship_x], ax
     mov ax, [ship_vy]
     add [ship_y], ax
-    ; Wrap ship
     call ast_wrap_ship
-    ; Apply friction (dampen velocity slightly)
     mov ax, [ship_vx]
     sar ax, 6
     sub [ship_vx], ax
@@ -164,40 +148,38 @@ FN U0, ovl_entry
     sar ax, 6
     sub [ship_vy], ax
 
-    ; Move bullets
-    mov cx, 0
+    xor si, si
 .mblet:
-    cmp cx, MAX_BLETS
+    cmp si, MAX_BLETS * 2
     jge .move_rocks
-    shl cx, 1
-    cmp word [blet_life + cx], 0
+    cmp word [blet_life + si], 0
     je .mblet_skip
-    mov ax, [blet_vx + cx]
-    add [blet_x + cx], ax
-    mov ax, [blet_vy + cx]
-    add [blet_y + cx], ax
-    dec word [blet_life + cx]
-    ; Wrap bullet
-    mov ax, [blet_x + cx]
+    mov ax, [blet_vx + si]
+    add [blet_x + si], ax
+    mov ax, [blet_vy + si]
+    add [blet_y + si], ax
+    dec word [blet_life + si]
+    
+    ; Wrap bullet (usando SI)
+    mov ax, [blet_x + si]
     cmp ax, 0
     jge .bwx_ok
-    add word [blet_x + cx], 320 * 16
+    add word [blet_x + si], 320 * 16
 .bwx_ok:
     cmp ax, 320 * 16
     jl .bwy_ok
-    sub word [blet_x + cx], 320 * 16
+    sub word [blet_x + si], 320 * 16
 .bwy_ok:
-    mov ax, [blet_y + cx]
+    mov ax, [blet_y + si]
     cmp ax, 0
     jge .bwx2_ok
-    add word [blet_y + cx], 200 * 16
+    add word [blet_y + si], 200 * 16
 .bwx2_ok:
     cmp ax, 200 * 16
     jl .mblet_skip
-    sub word [blet_y + cx], 200 * 16
+    sub word [blet_y + si], 200 * 16
 .mblet_skip:
-    shr cx, 1
-    inc cx
+    add si, 2
     jmp .mblet
 
 .move_rocks:
@@ -210,8 +192,6 @@ FN U0, ovl_entry
     call ast_draw_rocks
     call ast_draw_bullets
     call ast_draw_ship
-
-    ; Score text
     mov bx, 4
     mov dx, 4
     mov al, 7
@@ -225,8 +205,6 @@ FN U0, ovl_entry
     mov al, 15
     mov si, sbuf
     call gl16_text_gfx
-
-    ; Spawn new rocks if all dead
     cmp word [rock_cnt], 0
     jne .frame
     call ast_spawn_rocks
@@ -239,7 +217,6 @@ ENDFN
 
 ast_init:
     call ast_spawn_rocks
-    ; Clear bullets
     mov cx, MAX_BLETS
     xor si, si
 .cl:
@@ -258,7 +235,6 @@ ast_spawn_rocks:
 .sr:
     push cx
     push si
-    ; Random position (avoid centre)
     call ast_rand
     and ax, 0xFF
     cmp ax, 80
@@ -275,7 +251,6 @@ ast_spawn_rocks:
     mov bx, 16
     mul bx
     mov [rock_y + si], ax
-    ; Random velocity
     call ast_rand
     and ax, 0x1F
     sub ax, 16
@@ -284,7 +259,6 @@ ast_spawn_rocks:
     and ax, 0x1F
     sub ax, 16
     mov [rock_vy + si], ax
-    ; Size 12-20
     call ast_rand
     and ax, 0x07
     add ax, 12
@@ -342,7 +316,7 @@ ast_move_rocks:
     add [rock_x + si], ax
     mov ax, [rock_vy + si]
     add [rock_y + si], ax
-    ; Wrap
+    ; Wrap rocks
     mov ax, [rock_x + si]
     cmp ax, 0
     jge .rx_ok
@@ -377,7 +351,6 @@ ast_check_collisions:
     push dx
     push si
     push di
-    ; Check each bullet vs each rock
     mov di, 0
 .bl:
     cmp di, MAX_BLETS * 2
@@ -386,11 +359,10 @@ ast_check_collisions:
     je .bl_next
     mov ax, [blet_x + di]
     sar ax, 4
-    mov bx, ax          ; bx = bullet screen x
+    mov bx, ax
     mov ax, [blet_y + di]
     sar ax, 4
-    mov dx, ax          ; dx = bullet screen y
-    ; Check each rock
+    mov dx, ax
     xor si, si
 .rk:
     cmp si, MAX_ROCKS * 2
@@ -399,21 +371,20 @@ ast_check_collisions:
     je .rk_next
     mov ax, [rock_x + si]
     sar ax, 4
-    mov cx, ax          ; cx = rock screen x
-    sub cx, bx          ; cx = dx
+    mov cx, ax
+    sub cx, bx
     imul cx
-    push ax             ; cx^2
+    push ax
     mov ax, [rock_y + si]
     sar ax, 4
     sub ax, dx
     imul ax
-    add ax, [esp]       ; dist^2 approx
+    add ax, [esp]
     pop cx
     mov cx, [rock_sz + si]
     imul cx
     cmp ax, cx
     jg .rk_next
-    ; Hit! destroy rock
     mov word [blet_life + di], 0
     mov word [rock_sz + si], 0
     dec word [rock_cnt]
@@ -450,16 +421,13 @@ ast_draw_rocks:
     mov ax, [rock_y + si]
     sar ax, 4
     mov dx, ax
-    ; Draw simple circle approximation (diamond)
     mov ax, [rock_sz + si]
     push ax
-    ; Draw 5 horizontal lines for diamond shape
     push bx
     push dx
-    ; Top half
     xor di, di
 .drw:
-    cmp di, ax
+    cmp di, [esp+8]
     jg .dr_done_draw
     push di
     push dx
@@ -470,8 +438,8 @@ ast_draw_rocks:
     mov cx, bx
     add cx, di
     pop ax
-    mov bx, ax          ; reuse bx as x_start
-    mov ax, [esp+4]     ; orig dx
+    mov bx, ax
+    mov ax, [esp+4]
     sub ax, di
     cmp ax, di
     jge .drw_ok
@@ -515,10 +483,9 @@ ast_draw_bullets:
     push cx
     push dx
     push si
-    xor si, 0
+    xor si, si
     mov cx, MAX_BLETS
 .db:
-    shl cx, 0
     cmp word [blet_life + si], 0
     je .db_skip
     mov ax, [blet_x + si]
@@ -537,8 +504,7 @@ ast_draw_bullets:
     call gl16_pix
 .db_skip:
     add si, 2
-    dec cx
-    jnz .db
+    loop .db
     pop si
     pop dx
     pop cx
@@ -558,7 +524,6 @@ ast_draw_ship:
     mov ax, [ship_y]
     sar ax, 4
     mov dx, ax
-    ; Nose
     push bx
     push dx
     mov ax, [ship_ang]
@@ -576,7 +541,6 @@ ast_draw_ship:
     call gl16_pix
     pop dx
     pop bx
-    ; Left wing
     mov ax, [ship_ang]
     add ax, 140
     cmp ax, 360
@@ -601,7 +565,6 @@ ast_draw_ship:
     pop bx
     mov al, 10
     call gl16_pix
-    ; Right wing
     mov bx, [ship_x]
     sar bx, 4
     mov dx, [ship_y]

@@ -361,25 +361,36 @@ hw_fix_palette:
     push ax
     push cx
     mov al, 16
-    out VGA_DAC_WR, al      ; Ring 0: set DAC write index
+    out 0x3C8, al          ; Ring 0: índice DAC
     mov cx, 240
-    mov al, 16
+
 .pal_loop:
     push ax
-    mov ah, al
-    shr ah, 2
-    and ah, 0x3F
-    out VGA_DAC_DATA, ah    ; Red
-    mov ah, al
-    shr ah, 1
-    and ah, 0x3F
-    out VGA_DAC_DATA, ah    ; Green
-    mov ah, al
-    and ah, 0x3F
-    out VGA_DAC_DATA, ah    ; Blue
+
+    ; Componente Vermelho
+    mov al, ah
+    shr al, 1
+    and al, 0x3F
+    mov dx, 0x3C9
+    out dx, al
+
+    ; Componente Verde
+    mov al, ah
+    shr al, 4
+    and al, 0x3F
+    mov dx, 0x3C9
+    out dx, al
+
+    ; Componente Azul
+    mov al, ah
+    and al, 0x3F
+    mov dx, 0x3C9
+    out dx, al
+
     pop ax
-    inc al
+    inc ax
     loop .pal_loop
+
     pop cx
     pop ax
     ret

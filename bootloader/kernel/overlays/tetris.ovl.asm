@@ -166,7 +166,9 @@ FN U0, ovl_entry
 
 .no_key:
     inc word [drop_cnt]
-    cmp word [drop_cnt], [drop_spd]
+    mov ax, [drop_spd]     ; Move o valor da memória para um registrador (ex: AX)
+    cmp [drop_cnt], ax     ; Compara a memória com o valor que agora está no registrador
+
     jl .draw
     mov word [drop_cnt], 0
 

@@ -132,7 +132,9 @@ FN U0, ovl_entry
     ; Move aliens horizontally
 .alien_step:
     inc word [alien_timer]
-    cmp word [alien_timer], [alien_spd]
+    mov ax, [alien_spd]    ; Move o valor da velocidade para o registrador AX
+    cmp [alien_timer], ax  ; Compara o timer com o valor que está em AX
+
     jl .draw
     mov word [alien_timer], 0
     mov ax, [alien_dx]
