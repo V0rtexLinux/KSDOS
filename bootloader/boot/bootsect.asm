@@ -164,86 +164,50 @@ halt:
 
 ; =============================================================================
 ; rd_sectors: Read CX sectors at LBA AX into ES:BX
-;             Trashes DX, DI, SI internally; preserves AX,BX,CX,ES
+;   Uses INT 13h AH=42h (Extended LBA Read) — works for floppy and HDD
+;   Preserves AX, BX, CX, ES
 ; =============================================================================
 rd_sectors:
-    ; Save caller's AX BX CX
     push ax
     push bx
     push cx
     push dx
-    push di
     push si
-
-    mov si, 0               ; retry counter (per sector)
 
 .rs_loop:
     test cx, cx
     jz .rs_done
 
-    ; --- LBA to CHS ---
-    ; Use DX:AX = 0:AX (LBA is <= 2880 so always fits in AX)
-    push ax
-    push cx
-    push bx
+    ; Build Disk Address Packet (DAP) on the stack (16 bytes, grows downward)
+    push word 0             ; LBA bits 48-63
+    push word 0             ; LBA bits 32-47
+    push word 0             ; LBA bits 16-31
+    push ax                 ; LBA bits 0-15
+    push es                 ; transfer buffer segment
+    push bx                 ; transfer buffer offset
+    push word 1             ; sectors to transfer
+    push word 0x0010        ; packet size = 16, reserved = 0
 
-    xor dx, dx
-    movzx di, byte [SPT + 1]    ; SPT is a word; load properly
-    ; Wait, SPT is 'dw 18' so load it as a word:
-    mov di, [SPT]               ; DI = sectors per track = 18
-    div di                      ; AX = LBA / spt, DX = LBA mod spt
-    inc dx
-    mov cl, dl                  ; sector (1-based)
-
-    xor dx, dx
-    mov di, [HEADS]             ; number of heads = 2
-    div di                      ; AX = cylinder, DX = head
-    mov dh, dl                  ; head
-    mov ch, al                  ; cylinder low 8 bits
-    shl ah, 6
-    or cl, ah                   ; cylinder high 2 bits
-
-    pop bx                      ; BX = buffer offset (ES:BX is buffer)
-    ; CX still holds CHS (cylinder/sector) — do NOT pop cx before INT 13h
-
-    ; Read 1 sector
-    mov ax, 0x0201              ; AH=02 (read), AL=01 (sectors)
+    mov ah, 0x42
     mov dl, [DRVNUM]
+    mov si, sp              ; DS:SI -> DAP
     int 0x13
-
-    pop cx                      ; restore sector count
-    pop ax                      ; restore LBA
+    add sp, 16              ; discard DAP
 
     jc .rs_err
 
-    ; Advance buffer and LBA
     add bx, 512
     inc ax
     dec cx
-    mov si, 0                   ; reset retry count
     jmp .rs_loop
 
 .rs_err:
-    ; Reset disk controller and retry
-    push ax
-    push cx
-    push bx
-    xor ax, ax
-    mov dl, [DRVNUM]
-    int 0x13
-    pop bx
-    pop cx
-    pop ax
-    inc si
-    cmp si, 4
-    jb .rs_loop
     mov si, msg_err
     call prints
     jmp halt
 
 .rs_done:
     pop si
-    pop di
     pop dx
     pop cx
     pop bx
