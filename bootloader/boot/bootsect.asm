@@ -164,7 +164,7 @@ halt:
 
 ; =============================================================================
 ; rd_sectors: Read CX sectors at LBA AX into ES:BX
-;   Uses INT 13h AH=42h (Extended LBA Read) — works for floppy and HDD
+;   Tries INT 13h AH=42h (EDD/LBA) first; falls back to AH=02h (CHS)
 ;   Preserves AX, BX, CX, ES
 ; =============================================================================
 rd_sectors:
@@ -172,13 +172,14 @@ rd_sectors:
     push bx
     push cx
     push dx
+    push di
     push si
 
 .rs_loop:
     test cx, cx
     jz .rs_done
 
-    ; Build Disk Address Packet (DAP) on the stack (16 bytes, grows downward)
+    ; --- Try EDD (INT 13h AH=42h) ---
     push word 0             ; LBA bits 48-63
     push word 0             ; LBA bits 32-47
     push word 0             ; LBA bits 16-31
@@ -190,12 +191,35 @@ rd_sectors:
 
     mov ah, 0x42
     mov dl, [DRVNUM]
-    mov si, sp              ; DS:SI -> DAP
+    mov si, sp
     int 0x13
-    add sp, 16              ; discard DAP
+    add sp, 16
 
+    jnc .rs_ok              ; EDD succeeded
+
+    ; --- EDD failed: fall back to CHS (1.44MB floppy geometry) ---
+    push ax                 ; save LBA
+    push cx                 ; save count
+    xor dx, dx
+    mov di, 18              ; sectors per track
+    div di
+    inc dx
+    mov cl, dl              ; CL = sector (1-based)
+    xor dx, dx
+    mov di, 2               ; number of heads
+    div di
+    mov dh, dl              ; DH = head
+    mov ch, al              ; CH = cylinder low
+    shl ah, 6
+    or cl, ah               ; CL |= cylinder_high << 6
+    mov ax, 0x0201          ; AH=02 read, AL=1 sector
+    mov dl, [DRVNUM]
+    int 0x13
+    pop cx                  ; restore count
+    pop ax                  ; restore LBA
     jc .rs_err
 
+.rs_ok:
     add bx, 512
     inc ax
     dec cx
@@ -208,6 +232,7 @@ rd_sectors:
 
 .rs_done:
     pop si
+    pop di
     pop dx
     pop cx
     pop bx
