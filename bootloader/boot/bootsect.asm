@@ -48,6 +48,18 @@ boot_code:
 
     mov [DRVNUM], dl        ; save boot drive
 
+    ; Query actual drive geometry (INT 13h AH=08h)
+    ; Updates SPT/HEADS in BPB so CHS fallback uses real values
+    mov ah, 0x08
+    int 0x13
+    jc .geom_done           ; if unsupported, keep BPB defaults
+    and cl, 0x3F            ; CL bits 5-0 = sectors per track
+    mov [SPT], cx           ; store (CH=0 from successful call)
+    movzx ax, dh            ; DH = max head (0-based)
+    inc ax
+    mov [HEADS], ax
+.geom_done:
+
     ; Print loading message
     mov si, msg_load
     call prints
@@ -197,16 +209,16 @@ rd_sectors:
 
     jnc .rs_ok              ; EDD succeeded
 
-    ; --- EDD failed: fall back to CHS (1.44MB floppy geometry) ---
+    ; --- EDD failed: fall back to CHS (geometry from AH=08h probe) ---
     push ax                 ; save LBA
     push cx                 ; save count
     xor dx, dx
-    mov di, 18              ; sectors per track
+    mov di, [SPT]           ; sectors per track (probed or BPB default)
     div di
     inc dx
     mov cl, dl              ; CL = sector (1-based)
     xor dx, dx
-    mov di, 2               ; number of heads
+    mov di, [HEADS]         ; number of heads (probed or BPB default)
     div di
     mov dh, dl              ; DH = head
     mov ch, al              ; CH = cylinder low
