@@ -1,4 +1,4 @@
-name: KSDOS Build and Release
+name: KSDOS Build
 
 on:
   push:
@@ -57,32 +57,3 @@ jobs:
       with:
         name: kernel-binaries
         path: ./artifacts/kernel/
-
-    - name: Criar Release
-      uses: softprops/action-gh-release@v2
-      with:
-        name: KSDOS ${{ github.ref_name }}
-        body: |
-          ## KSDOS Operating System - Release ${{ github.ref_name }}
-          
-          ### Sistema completo com:
-          - Boot sector (bootsect.bin)
-          - Kernel principal (kernel.bin)
-          - Mass loader
-          - Todos os módulos do sistema (SYSTEM/)
-          - Discos de instalação (DISK1.IMG, DISK2.IMG, DISK3.IMG)
-          
-          ### Estrutura:
-          - **DISK1.IMG**: Disco de boot/setup principal
-          - **DISK2.IMG**: Utilitários do sistema
-          - **DISK3.IMG**: Ferramentas complementares
-          
-          ### Arquivos do kernel incluídos:
-          - Todos os arquivos .asm do diretório kernel/
-          - Todos os arquivos de bootloader/kernel/system/ (BIOS/, DOS/, CMD/, DEV/, etc.)
-          - Módulos de compilação, gráficos, rede, som, etc.
-        draft: false
-        prerelease: false
-        files: ./artifacts/**/*      # anexa todos os arquivos baixados
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
