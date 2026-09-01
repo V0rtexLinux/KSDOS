@@ -403,6 +403,173 @@ gl16_hline:
 _hl_col: db 0
 
 ; ============================================================
+; gl16_vline: draw vertical line
+; BX=x, CX=y_start, DX=y_end, AL=colour
+; ============================================================
+gl16_vline:
+    push ax
+    push bx
+    push cx
+    push dx
+    push di
+    push es
+    cmp bx, MODE13_W
+    jae .vl_done
+    cmp bx, 0
+    jl .vl_done
+    cmp cx, dx
+    jle .vl_order
+    xchg cx, dx
+.vl_order:
+    cmp cx, 0
+    jge .vl_top_ok
+    xor cx, cx
+.vl_top_ok:
+    cmp dx, MODE13_H - 1
+    jle .vl_bot_ok
+    mov dx, MODE13_H - 1
+.vl_bot_ok:
+    cmp cx, dx
+    jg .vl_done
+    mov [_vl_col], al
+    push ax
+    mov ax, VGA_GFX_SEG
+    mov es, ax
+    pop ax
+    mov [_vl_x], bx
+.vl_loop:
+    mov ax, cx               ; ax = y
+    mov di, ax
+    shl di, 8                ; di = y*256
+    shl ax, 6                ; ax = y*64
+    add di, ax                ; di = y*320
+    add di, [_vl_x]            ; di += x
+    mov al, [_vl_col]
+    mov es:[di], al
+    inc cx
+    cmp cx, dx
+    jle .vl_loop
+.vl_done:
+    pop es
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+_vl_col: db 0
+_vl_x:   dw 0
+
+; ============================================================
+; gl16_rect: filled rectangle
+; Set rect_x0,rect_y0,rect_x1,rect_y1 (words) before calling; AL=colour
+; ============================================================
+rect_x0: dw 0
+rect_y0: dw 0
+rect_x1: dw 0
+rect_y1: dw 0
+
+gl16_rect:
+    push ax
+    push bx
+    push cx
+    push dx
+    mov [_rect_col], al
+    mov dx, [rect_y0]
+    mov ax, [rect_y1]
+    cmp dx, ax
+    jle .rc_yok
+    xchg dx, ax
+    mov [rect_y0], dx
+    mov [rect_y1], ax
+.rc_yok:
+.rc_loop:
+    cmp dx, [rect_y1]
+    jg .rc_done
+    push dx
+    mov bx, [rect_x0]
+    mov cx, [rect_x1]
+    mov al, [_rect_col]
+    call gl16_hline
+    pop dx
+    inc dx
+    jmp .rc_loop
+.rc_done:
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+_rect_col: db 0
+
+; ============================================================
+; gl16_circle: filled circle
+; Set circ_x,circ_y,circ_r (words) before calling; AL=colour
+; ============================================================
+circ_x: dw 0
+circ_y: dw 0
+circ_r: dw 0
+
+gl16_circle:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    mov [_circ_col], al
+    mov ax, [circ_r]
+    imul word [circ_r]
+    mov [_circ_r2], ax          ; r*r (radius small enough not to overflow)
+
+    mov si, [circ_r]
+    neg si                       ; si = dy, from -r to +r
+.cc_loop:
+    cmp si, [circ_r]
+    jg .cc_done
+    ; find max dx such that dx*dx + dy*dy <= r*r
+    mov ax, si
+    imul ax                      ; ax = dy*dy
+    mov bx, [_circ_r2]
+    sub bx, ax                   ; bx = r*r - dy*dy
+    jl .cc_next                  ; negative -> no span this row
+    ; integer sqrt(bx) via simple search
+    xor cx, cx                   ; cx = candidate dx
+.cc_sqrt:
+    mov ax, cx
+    inc ax
+    imul ax
+    cmp ax, bx
+    jg .cc_sqrt_done
+    inc cx
+    jmp .cc_sqrt
+.cc_sqrt_done:
+    ; draw hline y=circ_y+dy, x=circ_x-cx..circ_x+cx
+    push si
+    mov ax, [circ_y]
+    add ax, si
+    mov dx, ax
+    mov bx, [circ_x]
+    sub bx, cx
+    mov ax, [circ_x]
+    add ax, cx
+    mov cx, ax
+    mov al, [_circ_col]
+    call gl16_hline
+    pop si
+.cc_next:
+    inc si
+    jmp .cc_loop
+.cc_done:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+_circ_col: db 0
+_circ_r2:  dw 0
+
+; ============================================================
 ; gl16_tri: filled triangle (scanline fill) — FIXED
 ; Arguments set before call:
 ;   tri_x0,tri_y0, tri_x1,tri_y1, tri_x2,tri_y2 (words)

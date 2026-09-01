@@ -9,10 +9,20 @@
 ;
 ; This version copies all TOTAL_INSTALL_SECS sectors (2880 = 1.44MB) from
 ; the source boot drive to the target hard disk, making it fully bootable.
+;
+; Two bugs were found and fixed here (mirroring the boot sector's own
+; history - see bootsect.asm):
+;   1. install_read_sector/install_write_sector checked the EDD carry flag
+;      *after* `add sp,16`, which clobbers CF, so a failed EDD call was
+;      always misread as success.
+;   2. Copying sector-by-sector (2880 read+write BIOS call pairs) was found
+;      to eventually hang the emulated floppy controller on some BIOS/QEMU
+;      combinations. Both routines now batch as many sectors as fit on the
+;      current CHS track per BIOS call.
 ; =============================================================================
 
 ; ---- Installation constants ----
-INSTALL_BUFFER      equ 0x8000      ; Temporary single-sector buffer (512 bytes)
+INSTALL_BUFFER      equ 0x8000      ; Batch transfer buffer (up to 18*512 bytes)
 TOTAL_INSTALL_SECS  equ 2880        ; Full 1.44MB floppy = 2880 sectors
 INSTALL_SUCCESS     equ 0x00
 INSTALL_ERROR       equ 0x01
@@ -35,12 +45,15 @@ install_s_progress: db 0x0D, "Progress: ", 0
 install_cur_sec:    dw 0            ; current sector being copied
 install_src_drive:  db 0            ; source drive (saved from DL on entry)
 install_lba_tmp:    dw 0            ; saved LBA for CHS fallback
+install_batch:      dw 0            ; sectors in the current batch
+install_no_edd:     db 0            ; set once EDD is known unsupported
+install_force_chs:  db 0            ; set by install_set_force_chs to skip EDD entirely
 
 ; ============================================================
 ; install_to_hd: Copy entire disk image to internal HD (0x80)
 ;
-; Reads each sector from the source floppy/USB (drive in DL at call)
-; and writes it to the internal HD (drive 0x80), sector by sector.
+; Reads a batch of sectors from the source floppy/USB (drive in DL at
+; call) and writes the same batch to the internal HD (drive 0x80).
 ;
 ; Input:  DL = source drive number (from boot: usually 0x00 or removable)
 ; Returns: CF=0 on success, CF=1 on error
@@ -55,6 +68,13 @@ install_to_hd:
 
     ; Save source drive
     mov [install_src_drive], dl
+    cmp byte [install_force_chs], 0
+    je .reset_edd_flag
+    mov byte [install_no_edd], 1
+    jmp .edd_flag_set
+.reset_edd_flag:
+    mov byte [install_no_edd], 0
+.edd_flag_set:
 
     ; Print header
     mov si, install_s_start
@@ -63,7 +83,6 @@ install_to_hd:
     mov si, install_s_reading
     call vid_print
 
-    ; Loop over all TOTAL_INSTALL_SECS sectors
     mov word [install_cur_sec], 0
 
 .copy_loop:
@@ -71,28 +90,41 @@ install_to_hd:
     cmp ax, TOTAL_INSTALL_SECS
     jae .copy_done
 
-    ; --- Read sector AX from source drive ---
-    push ax
+    ; batch size = sectors left on this track, clamped to what remains
+    xor dx, dx
+    mov bx, 18                  ; assume 18 SPT for batching purposes; the
+                                 ; underlying CHS fallback recomputes real
+                                 ; geometry per drive type if EDD is absent
+    div bx
+    mov cx, 18
+    sub cx, dx                  ; sectors left on this 18-sector track
+    mov bx, TOTAL_INSTALL_SECS
+    sub bx, [install_cur_sec]
+    cmp cx, bx
+    jbe .batch_ok
+    mov cx, bx
+.batch_ok:
+    mov [install_batch], cx
+
+    ; --- Read the batch from the source drive ---
+    mov ax, [install_cur_sec]
     mov dl, [install_src_drive]
-    call install_read_sector    ; AX=LBA, DL=drive -> buf at INSTALL_BUFFER
-    pop ax
+    mov cx, [install_batch]
+    call install_read_batch
     jc .read_error
 
-    ; --- Write sector AX to target HD (0x80) ---
-    push ax
+    ; --- Write the same batch to the target HD (0x80) ---
+    mov ax, [install_cur_sec]
     mov dl, 0x80
-    call install_write_sector   ; AX=LBA, DL=drive <- buf at INSTALL_BUFFER
-    pop ax
+    mov cx, [install_batch]
+    call install_write_batch
     jc .write_error
 
-    ; Progress dot every 64 sectors (~32KB)
-    test ax, 0x003F
-    jnz .no_dot
     mov si, install_s_dot
     call vid_print
-.no_dot:
 
-    inc word [install_cur_sec]
+    mov ax, [install_batch]
+    add [install_cur_sec], ax
     jmp .copy_loop
 
 .copy_done:
@@ -129,37 +161,43 @@ install_to_ssd:
     jmp install_to_hd
 
 ; ============================================================
-; install_read_sector: Read one 512-byte sector into INSTALL_BUFFER
-; Input:  AX = LBA sector number, DL = drive number
+; install_read_batch: Read CX sectors starting at LBA AX into
+; INSTALL_BUFFER (flat address 0x0000:0x8000)
+; Input:  AX = starting LBA, CX = sector count (<=18), DL = drive number
 ; Output: CF=0 success, CF=1 error
-; Buffer: flat address INSTALL_BUFFER (0x0000:0x8000)
 ; ============================================================
-install_read_sector:
+install_read_batch:
     push ax
     push bx
     push cx
     push dx
     push si
 
-    ; Save LBA for CHS fallback
     mov [install_lba_tmp], ax
+    mov [_irb_batch], cx
+    cmp byte [install_no_edd], 0
+    jne .chs
 
-    ; Try EDD (INT 13h AH=42h) first
+    ; Try EDD (INT 13h AH=42h) for the whole batch in one call
     push word 0             ; LBA bits 48-63
     push word 0             ; LBA bits 32-47
     push word 0             ; LBA bits 16-31
     push ax                 ; LBA bits 0-15
     push word 0x0000        ; buffer segment (DS=0)
     push word INSTALL_BUFFER; buffer offset
-    push word 1             ; sectors to transfer
+    push cx                 ; sectors to transfer
     push word 0x0010        ; packet size=16, reserved=0
     mov ah, 0x42
     mov si, sp
     int 0x13
+    jc .edd_failed
     add sp, 16
-    jnc .rs_done
+    jmp .rs_done
+.edd_failed:
+    add sp, 16
+    mov byte [install_no_edd], 1
 
-    ; EDD failed — fall back to CHS using saved LBA
+.chs:
     mov ax, [install_lba_tmp]
     cmp dl, 0x80
     jb .chs_floppy
@@ -193,7 +231,8 @@ install_read_sector:
     mov ch, al
 
 .chs_read:
-    mov ax, 0x0201      ; AH=02 read, AL=1 sector
+    mov ah, 0x02
+    mov al, [_irb_batch]
     mov bx, INSTALL_BUFFER
     push es
     push ds
@@ -204,7 +243,6 @@ install_read_sector:
     jmp .rs_done
 
 .rs_err:
-    ; Set CF
     stc
     pop si
     pop dx
@@ -221,39 +259,46 @@ install_read_sector:
     pop bx
     pop ax
     ret
+_irb_batch: dw 0
 
 ; ============================================================
-; install_write_sector: Write INSTALL_BUFFER to one sector on target drive
-; Input:  AX = LBA sector number, DL = drive number (0x80 = first HD/SSD)
+; install_write_batch: Write CX sectors from INSTALL_BUFFER to LBA AX
+; Input:  AX = starting LBA, CX = sector count (<=18), DL = drive number
 ; Output: CF=0 success, CF=1 error
 ; ============================================================
-install_write_sector:
+install_write_batch:
     push ax
     push bx
     push cx
     push dx
     push si
 
-    ; Save LBA for CHS fallback
     mov [install_lba_tmp], ax
+    mov [_iwb_batch], cx
+    cmp byte [install_no_edd], 0
+    jne .chs
 
-    ; Try EDD write (INT 13h AH=43h)
+    ; Try EDD write (INT 13h AH=43h) for the whole batch
     push word 0             ; LBA bits 48-63
     push word 0             ; LBA bits 32-47
     push word 0             ; LBA bits 16-31
     push ax                 ; LBA bits 0-15
     push word 0x0000        ; buffer segment
     push word INSTALL_BUFFER; buffer offset
-    push word 1             ; sectors
+    push cx                 ; sectors
     push word 0x0010        ; packet size=16
     mov ah, 0x43
     mov al, 0x00            ; write without verify
     mov si, sp
     int 0x13
+    jc .edd_wfailed
     add sp, 16
-    jnc .ws_done
+    jmp .ws_done
+.edd_wfailed:
+    add sp, 16
+    mov byte [install_no_edd], 1
 
-    ; EDD write failed — CHS fallback using saved LBA
+.chs:
     mov ax, [install_lba_tmp]
     cmp dl, 0x80
     jb .whs_floppy
@@ -285,7 +330,8 @@ install_write_sector:
     mov ch, al
 
 .whs_write:
-    mov ax, 0x0301      ; AH=03 write, AL=1 sector
+    mov ah, 0x03
+    mov al, [_iwb_batch]
     mov bx, INSTALL_BUFFER
     push es
     push ds
@@ -311,6 +357,7 @@ install_write_sector:
     pop bx
     pop ax
     ret
+_iwb_batch: dw 0
 
 ; ============================================================
 ; install_with_retry: Install with up to 3 retries on error
@@ -341,6 +388,41 @@ install_with_retry:
     ret
 
 ; ============================================================
+; install_run: Install using the drive KSDOS actually booted from,
+; so overlays (which have no access to the kernel's internal
+; boot_drive variable) can trigger a real install without guessing
+; a drive number themselves.
+; Returns: CF=0 success, CF=1 failure
+; ============================================================
+install_run:
+    push dx
+    mov dl, [boot_drive]
+    call install_with_retry
+    pop dx
+    ret
+
+; ============================================================
+; install_run_verify: Verify using the boot drive, same reasoning
+; as install_run.
+; Returns: CF=0 match, CF=1 mismatch
+; ============================================================
+install_run_verify:
+    push dx
+    mov dl, [boot_drive]
+    call install_verify
+    pop dx
+    ret
+
+; ============================================================
+; install_set_force_chs: AL=0/1, sets/clears the force-CHS-only flag.
+; Must be called before install_run to take effect (install_to_hd
+; consults this flag itself instead of always resetting it).
+; ============================================================
+install_set_force_chs:
+    mov [install_force_chs], al
+    ret
+
+; ============================================================
 ; install_verify: Read back first 16 sectors and compare to source
 ; Input: DL = source drive
 ; Returns: CF=0 if match, CF=1 if mismatch
@@ -358,13 +440,16 @@ install_verify:
     call vid_print
 
     push dx                 ; save source drive
-    mov cx, 16              ; verify first 16 sectors
-    xor ax, ax              ; start at sector 0
+    mov cx, 16               ; verify first 16 sectors
+    xor ax, ax               ; start at sector 0
 
 .vloop:
     ; Read from source into INSTALL_BUFFER
     mov dl, [install_src_drive]
-    call install_read_sector
+    push cx
+    mov cx, 1
+    call install_read_batch
+    pop cx
     jc .vfail
 
     ; Save copy to 0x0000:0x9000 (just above install buffer)
@@ -381,7 +466,10 @@ install_verify:
     pop dx
     push dx
     mov dl, 0x80
-    call install_read_sector
+    push cx
+    mov cx, 1
+    call install_read_batch
+    pop cx
     jc .vfail
 
     ; Compare
@@ -391,7 +479,6 @@ install_verify:
     mov si, INSTALL_BUFFER
     mov di, 0x9000
     mov bx, 256         ; compare 512 bytes (256 words)
-    xor cx, cx
 .vcmp:
     mov dx, [es:si]
     cmp dx, [es:di]

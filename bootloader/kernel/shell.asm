@@ -250,6 +250,49 @@ cmd_table:
     dw cmd_s_DCC,      sh_DELPHI
     dw cmd_s_JS,       sh_JS
     dw cmd_s_JSCRIPT,  sh_JS
+    dw cmd_s_PONG,  sh_PONG
+    dw cmd_s_SNAKE,  sh_SNAKE
+    dw cmd_s_TETRIS,  sh_TETRIS
+    dw cmd_s_BRKOUT,  sh_BRKOUT
+    dw cmd_s_INVADE,  sh_INVADE
+    dw cmd_s_ASTRO,  sh_ASTRO
+    dw cmd_s_MAZE,  sh_MAZE
+    dw cmd_s_TANKS,  sh_TANKS
+    dw cmd_s_RACE,  sh_RACE
+    dw cmd_s_CHESS,  sh_CHESS
+    dw cmd_s_MINE,  sh_MINE
+    dw cmd_s_DUNG,  sh_DUNG
+    dw cmd_s_FROG,  sh_FROG
+    dw cmd_s_LINES,  sh_LINES
+    dw cmd_s_SIMON,  sh_SIMON
+    dw cmd_s_CONN4,  sh_CONN4
+    dw cmd_s_WORM,  sh_WORM
+    dw cmd_s_GOLF,  sh_GOLF
+    dw cmd_s_SHOOT,  sh_SHOOT
+    dw cmd_s_ROGUE,  sh_ROGUE
+    dw cmd_s_TICTAC,  sh_TICTAC
+    dw cmd_s_HANGMAN,  sh_HANGMAN
+    dw cmd_s_NIM,  sh_NIM
+    dw cmd_s_HANOI,  sh_HANOI
+    dw cmd_s_REVERSI,  sh_REVERSI
+    dw cmd_s_2048,  sh_2048
+    dw cmd_s_LIGHTOUT,  sh_LIGHTOUT
+    dw cmd_s_MASTER,  sh_MASTER
+    dw cmd_s_BJACK,  sh_BJACK
+    dw cmd_s_WARCARD,  sh_WARCARD
+    dw cmd_s_CRAPS,  sh_CRAPS
+    dw cmd_s_SLOTS,  sh_SLOTS
+    dw cmd_s_WORDLE,  sh_WORDLE
+    dw cmd_s_BATTLE,  sh_BATTLE
+    dw cmd_s_CHECKERS,  sh_CHECKERS
+    dw cmd_s_DOOM,  sh_DOOM
+    dw cmd_s_CLOCK,  sh_CLOCK
+    dw cmd_s_TASKMGR,  sh_TASKMGR
+    dw cmd_s_CONTROL,  sh_CONTROL
+    dw cmd_s_WINFILE,  sh_WINFILE
+    dw cmd_s_NOTEPAD,  sh_NOTEPAD
+    dw cmd_s_PAINT,  sh_PAINT
+    dw cmd_s_SETUP,  sh_SETUP
     dw 0, 0             ; sentinel
 
 ; Command name strings (uppercase)
@@ -339,6 +382,50 @@ cmd_s_DELPHI:   db "DELPHI",   0
 cmd_s_DCC:      db "DCC",      0
 cmd_s_JS:       db "JS",       0
 cmd_s_JSCRIPT:  db "JSCRIPT",  0
+
+cmd_s_PONG: db "PONG", 0
+cmd_s_SNAKE: db "SNAKE", 0
+cmd_s_TETRIS: db "TETRIS", 0
+cmd_s_BRKOUT: db "BRKOUT", 0
+cmd_s_INVADE: db "INVADE", 0
+cmd_s_ASTRO: db "ASTRO", 0
+cmd_s_MAZE: db "MAZE", 0
+cmd_s_TANKS: db "TANKS", 0
+cmd_s_RACE: db "RACE", 0
+cmd_s_CHESS: db "CHESS", 0
+cmd_s_MINE: db "MINE", 0
+cmd_s_DUNG: db "DUNG", 0
+cmd_s_FROG: db "FROG", 0
+cmd_s_LINES: db "LINES", 0
+cmd_s_SIMON: db "SIMON", 0
+cmd_s_CONN4: db "CONN4", 0
+cmd_s_WORM: db "WORM", 0
+cmd_s_GOLF: db "GOLF", 0
+cmd_s_SHOOT: db "SHOOT", 0
+cmd_s_ROGUE: db "ROGUE", 0
+cmd_s_TICTAC: db "TICTAC", 0
+cmd_s_HANGMAN: db "HANGMAN", 0
+cmd_s_NIM: db "NIM", 0
+cmd_s_HANOI: db "HANOI", 0
+cmd_s_REVERSI: db "REVERSI", 0
+cmd_s_2048: db "2048", 0
+cmd_s_LIGHTOUT: db "LIGHTOUT", 0
+cmd_s_MASTER: db "MASTER", 0
+cmd_s_BJACK: db "BJACK", 0
+cmd_s_WARCARD: db "WARCARD", 0
+cmd_s_CRAPS: db "CRAPS", 0
+cmd_s_SLOTS: db "SLOTS", 0
+cmd_s_WORDLE: db "WORDLE", 0
+cmd_s_BATTLE: db "BATTLE", 0
+cmd_s_CHECKERS: db "CHECKERS", 0
+cmd_s_DOOM: db "DOOM", 0
+cmd_s_CLOCK: db "CLOCK", 0
+cmd_s_TASKMGR: db "TASKMGR", 0
+cmd_s_CONTROL: db "CONTROL", 0
+cmd_s_WINFILE: db "WINFILE", 0
+cmd_s_NOTEPAD: db "NOTEPAD", 0
+cmd_s_PAINT: db "PAINT", 0
+cmd_s_SETUP: db "SETUP", 0
 
 sh_dispatch:
     push ax
@@ -2321,6 +2408,50 @@ ovl_VB:     db 'V','B',' ',' ',' ',' ',' ',' ','O','V','L'
 ovl_DELPHI: db 'D','E','L','P','H','I',' ',' ','O','V','L'
 ovl_JS:     db 'J','S',' ',' ',' ',' ',' ',' ','O','V','L'
 
+ovl_PONG: db 'P','O','N','G',' ',' ',' ',' ','O','V','L'
+ovl_SNAKE: db 'S','N','A','K','E',' ',' ',' ','O','V','L'
+ovl_TETRIS: db 'T','E','T','R','I','S',' ',' ','O','V','L'
+ovl_BRKOUT: db 'B','R','K','O','U','T',' ',' ','O','V','L'
+ovl_INVADE: db 'I','N','V','A','D','E',' ',' ','O','V','L'
+ovl_ASTRO: db 'A','S','T','R','O',' ',' ',' ','O','V','L'
+ovl_MAZE: db 'M','A','Z','E',' ',' ',' ',' ','O','V','L'
+ovl_TANKS: db 'T','A','N','K','S',' ',' ',' ','O','V','L'
+ovl_RACE: db 'R','A','C','E',' ',' ',' ',' ','O','V','L'
+ovl_CHESS: db 'C','H','E','S','S',' ',' ',' ','O','V','L'
+ovl_MINE: db 'M','I','N','E',' ',' ',' ',' ','O','V','L'
+ovl_DUNG: db 'D','U','N','G',' ',' ',' ',' ','O','V','L'
+ovl_FROG: db 'F','R','O','G',' ',' ',' ',' ','O','V','L'
+ovl_LINES: db 'L','I','N','E','S',' ',' ',' ','O','V','L'
+ovl_SIMON: db 'S','I','M','O','N',' ',' ',' ','O','V','L'
+ovl_CONN4: db 'C','O','N','N','4',' ',' ',' ','O','V','L'
+ovl_WORM: db 'W','O','R','M',' ',' ',' ',' ','O','V','L'
+ovl_GOLF: db 'G','O','L','F',' ',' ',' ',' ','O','V','L'
+ovl_SHOOT: db 'S','H','O','O','T',' ',' ',' ','O','V','L'
+ovl_ROGUE: db 'R','O','G','U','E',' ',' ',' ','O','V','L'
+ovl_TICTAC: db 'T','I','C','T','A','C',' ',' ','O','V','L'
+ovl_HANGMAN: db 'H','A','N','G','M','A','N',' ','O','V','L'
+ovl_NIM: db 'N','I','M',' ',' ',' ',' ',' ','O','V','L'
+ovl_HANOI: db 'H','A','N','O','I',' ',' ',' ','O','V','L'
+ovl_REVERSI: db 'R','E','V','E','R','S','I',' ','O','V','L'
+ovl_2048: db '2','0','4','8',' ',' ',' ',' ','O','V','L'
+ovl_LIGHTOUT: db 'L','I','G','H','T','O','U','T','O','V','L'
+ovl_MASTER: db 'M','A','S','T','E','R',' ',' ','O','V','L'
+ovl_BJACK: db 'B','J','A','C','K',' ',' ',' ','O','V','L'
+ovl_WARCARD: db 'W','A','R','C','A','R','D',' ','O','V','L'
+ovl_CRAPS: db 'C','R','A','P','S',' ',' ',' ','O','V','L'
+ovl_SLOTS: db 'S','L','O','T','S',' ',' ',' ','O','V','L'
+ovl_WORDLE: db 'W','O','R','D','L','E',' ',' ','O','V','L'
+ovl_BATTLE: db 'B','A','T','T','L','E',' ',' ','O','V','L'
+ovl_CHECKERS: db 'C','H','E','C','K','E','R','S','O','V','L'
+ovl_DOOM: db 'D','O','O','M',' ',' ',' ',' ','O','V','L'
+ovl_CLOCK: db 'C','L','O','C','K',' ',' ',' ','O','V','L'
+ovl_TASKMGR: db 'T','A','S','K','M','G','R',' ','O','V','L'
+ovl_CONTROL: db 'C','O','N','T','R','O','L',' ','O','V','L'
+ovl_WINFILE: db 'W','I','N','F','I','L','E',' ','O','V','L'
+ovl_NOTEPAD: db 'N','O','T','E','P','A','D',' ','O','V','L'
+ovl_PAINT: db 'P','A','I','N','T',' ',' ',' ','O','V','L'
+ovl_SETUP: db 'S','E','T','U','P',' ',' ',' ','O','V','L'
+
 sh_CC:
     mov si, ovl_CC
     call ovl_load_run
@@ -2354,6 +2485,7 @@ sh_NET:
 sh_INSTALL:
     mov si, str_install_hdr
     call vid_println
+    mov dl, [boot_drive]
     call install_with_retry
     jc .install_error
     call install_verify
@@ -2514,6 +2646,222 @@ sh_DELPHI:
 
 sh_JS:
     mov si, ovl_JS
+    call ovl_load_run
+    ret
+
+; ============================================================
+sh_PONG:
+    mov si, ovl_PONG
+    call ovl_load_run
+    ret
+
+sh_SNAKE:
+    mov si, ovl_SNAKE
+    call ovl_load_run
+    ret
+
+sh_TETRIS:
+    mov si, ovl_TETRIS
+    call ovl_load_run
+    ret
+
+sh_BRKOUT:
+    mov si, ovl_BRKOUT
+    call ovl_load_run
+    ret
+
+sh_INVADE:
+    mov si, ovl_INVADE
+    call ovl_load_run
+    ret
+
+sh_ASTRO:
+    mov si, ovl_ASTRO
+    call ovl_load_run
+    ret
+
+sh_MAZE:
+    mov si, ovl_MAZE
+    call ovl_load_run
+    ret
+
+sh_TANKS:
+    mov si, ovl_TANKS
+    call ovl_load_run
+    ret
+
+sh_RACE:
+    mov si, ovl_RACE
+    call ovl_load_run
+    ret
+
+sh_CHESS:
+    mov si, ovl_CHESS
+    call ovl_load_run
+    ret
+
+sh_MINE:
+    mov si, ovl_MINE
+    call ovl_load_run
+    ret
+
+sh_DUNG:
+    mov si, ovl_DUNG
+    call ovl_load_run
+    ret
+
+sh_FROG:
+    mov si, ovl_FROG
+    call ovl_load_run
+    ret
+
+sh_LINES:
+    mov si, ovl_LINES
+    call ovl_load_run
+    ret
+
+sh_SIMON:
+    mov si, ovl_SIMON
+    call ovl_load_run
+    ret
+
+sh_CONN4:
+    mov si, ovl_CONN4
+    call ovl_load_run
+    ret
+
+sh_WORM:
+    mov si, ovl_WORM
+    call ovl_load_run
+    ret
+
+sh_GOLF:
+    mov si, ovl_GOLF
+    call ovl_load_run
+    ret
+
+sh_SHOOT:
+    mov si, ovl_SHOOT
+    call ovl_load_run
+    ret
+
+sh_ROGUE:
+    mov si, ovl_ROGUE
+    call ovl_load_run
+    ret
+
+sh_TICTAC:
+    mov si, ovl_TICTAC
+    call ovl_load_run
+    ret
+
+sh_HANGMAN:
+    mov si, ovl_HANGMAN
+    call ovl_load_run
+    ret
+
+sh_NIM:
+    mov si, ovl_NIM
+    call ovl_load_run
+    ret
+
+sh_HANOI:
+    mov si, ovl_HANOI
+    call ovl_load_run
+    ret
+
+sh_REVERSI:
+    mov si, ovl_REVERSI
+    call ovl_load_run
+    ret
+
+sh_2048:
+    mov si, ovl_2048
+    call ovl_load_run
+    ret
+
+sh_LIGHTOUT:
+    mov si, ovl_LIGHTOUT
+    call ovl_load_run
+    ret
+
+sh_MASTER:
+    mov si, ovl_MASTER
+    call ovl_load_run
+    ret
+
+sh_BJACK:
+    mov si, ovl_BJACK
+    call ovl_load_run
+    ret
+
+sh_WARCARD:
+    mov si, ovl_WARCARD
+    call ovl_load_run
+    ret
+
+sh_CRAPS:
+    mov si, ovl_CRAPS
+    call ovl_load_run
+    ret
+
+sh_SLOTS:
+    mov si, ovl_SLOTS
+    call ovl_load_run
+    ret
+
+sh_WORDLE:
+    mov si, ovl_WORDLE
+    call ovl_load_run
+    ret
+
+sh_BATTLE:
+    mov si, ovl_BATTLE
+    call ovl_load_run
+    ret
+
+sh_CHECKERS:
+    mov si, ovl_CHECKERS
+    call ovl_load_run
+    ret
+
+sh_DOOM:
+    mov si, ovl_DOOM
+    call ovl_load_run
+    ret
+
+sh_CLOCK:
+    mov si, ovl_CLOCK
+    call ovl_load_run
+    ret
+
+sh_TASKMGR:
+    mov si, ovl_TASKMGR
+    call ovl_load_run
+    ret
+
+sh_CONTROL:
+    mov si, ovl_CONTROL
+    call ovl_load_run
+    ret
+
+sh_WINFILE:
+    mov si, ovl_WINFILE
+    call ovl_load_run
+    ret
+
+sh_NOTEPAD:
+    mov si, ovl_NOTEPAD
+    call ovl_load_run
+    ret
+
+sh_PAINT:
+    mov si, ovl_PAINT
+    call ovl_load_run
+    ret
+
+sh_SETUP:
+    mov si, ovl_SETUP
     call ovl_load_run
     ret
 
