@@ -522,23 +522,17 @@ splash_init:
 ; ============================================================
 splash_update:
     push ax
+    push bx
     push si
     mov [splash_stage], al
     call splash_draw_bar
     call splash_draw_status
-    ; Small delay so user can see each step
-    push cx
-    push dx
-    mov cx, 0x00FF
-    mov dx, 0xFFFF
-.delay:
-    dec dx
-    jnz .delay
-    dec cx
-    jnz .delay
-    pop dx
-    pop cx
+    ; Small delay so user can see each step (BIOS-timed, not a raw
+    ; CPU-cycle busy loop - see splash_delay_ms below for why)
+    mov bx, 150
+    call splash_delay_ms
     pop si
+    pop bx
     pop ax
     ret
 
@@ -560,18 +554,9 @@ splash_complete:
     mov bl, ATTR_BOTBAR
     mov si, splash_ready_bar
     call vga_write_at
-    ; Short pause before shell
-    push cx
-    push dx
-    mov cx, 0x03FF
-    mov dx, 0xFFFF
-.rdelay:
-    dec dx
-    jnz .rdelay
-    dec cx
-    jnz .rdelay
-    pop dx
-    pop cx
+    ; Short pause before shell (BIOS-timed, see splash_delay_ms)
+    mov bx, 400
+    call splash_delay_ms
     pop si
     pop dx
     pop bx
@@ -579,3 +564,30 @@ splash_complete:
     ret
 
 splash_ready_bar: db " KSDOS v2.0  |  System Ready  |  Starting shell...  ", 0
+
+; ============================================================
+; splash_delay_ms: wait BX milliseconds via BIOS INT 15h AH=86h
+; (same mechanism as music.asm's spk_delay_ms). A raw CPU-cycle-count
+; busy loop was used here previously, tuned for real 8086-class speed;
+; under slow/interpreted emulation (no KVM, or a mobile emulator app)
+; that made the splash screen appear to hang for minutes instead of
+; pausing for a moment, since the same fixed instruction count takes
+; wildly different wall-clock time depending on host emulation speed.
+; A BIOS time-of-day wait is bounded by real elapsed time instead.
+; ============================================================
+splash_delay_ms:
+    push ax
+    push cx
+    push dx
+    xor dx, dx
+    mov ax, bx
+    mov cx, 1000
+    mul cx              ; DX:AX = microseconds
+    mov cx, dx          ; high word
+    mov dx, ax          ; low word
+    mov ah, 0x86
+    int 0x15
+    pop dx
+    pop cx
+    pop ax
+    ret
