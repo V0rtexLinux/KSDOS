@@ -80,4 +80,9 @@ cluster_to_lba      equ 0x0054
 fat_next_cluster    equ 0x0057
 disk_read_sector    equ 0x005A
 disk_write_sector   equ 0x005D
+install_to_hd       equ 0x0060
+ovl_load_run        equ 0x0063
+install_run         equ 0x0066
+install_run_verify  equ 0x0069
+install_set_force_chs equ 0x006C
 %endif

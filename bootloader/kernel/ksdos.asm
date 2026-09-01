@@ -36,6 +36,9 @@ ORG 0x0000
     KTENTRY disk_write_sector   ; 0x0024
     KTENTRY install_to_hd       ; 0x0027
     KTENTRY ovl_load_run        ; 0x002A
+    KTENTRY install_run         ; 0x002D
+    KTENTRY install_run_verify  ; 0x0030
+    KTENTRY install_set_force_chs ; 0x0033
 
 ; ---------------------------------------------------------------------------
 ; 0x0060: Shared data area — fixed addresses used by kernel and overlays.

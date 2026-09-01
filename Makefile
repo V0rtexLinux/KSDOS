@@ -29,7 +29,9 @@ DISK_IMG     := $(BUILD)/disk.img
 # Overlay binaries (assembled separately, embedded as .OVL files on disk)
 # ---------------------------------------------------------------------------
 OVL_NAMES := CC MASM CSC MUSIC NET OPENGL PSYQ GOLD4 IDE AI MATRIX SYSINFO CALC COLOR JAVA PY PERL PHP VB DELPHI JS RING0HW \
-             PONG SNAKE TETRIS BRKOUT INVADE ASTRO MAZE TANKS RACE CHESS MINE DUNG FROG LINES SIMON CONN4 WORM GOLF SHOOT ROGUE
+             PONG SNAKE TETRIS BRKOUT INVADE ASTRO MAZE TANKS RACE CHESS MINE DUNG FROG LINES SIMON CONN4 WORM GOLF SHOOT ROGUE \
+             TICTAC HANGMAN NIM HANOI REVERSI 2048 LIGHTOUT MASTER BJACK WARCARD CRAPS SLOTS WORDLE BATTLE CHECKERS \
+             DOOM CLOCK TASKMGR CONTROL WINFILE NOTEPAD PAINT SETUP
 OVL_BINS  := $(patsubst %,$(BUILD)/%.OVL,$(OVL_NAMES))
 
 # Disk images (3-disk installer)
@@ -274,6 +276,121 @@ $(BUILD)/ROGUE.OVL:  $(OVL_DIR)/rogue.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUIL
 	@echo "[NASM] Assembling game ROGUE..."
 	$(NASM) $(OVL_FLAGS) -o $@ $<
 	@echo "[OK]   ROGUE.OVL"
+
+$(BUILD)/TICTAC.OVL: $(OVL_DIR)/tictac.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game TICTAC..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   TICTAC.OVL"
+
+$(BUILD)/HANGMAN.OVL: $(OVL_DIR)/hangman.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game HANGMAN..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   HANGMAN.OVL"
+
+$(BUILD)/NIM.OVL:    $(OVL_DIR)/nim.ovl.asm     $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game NIM..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   NIM.OVL"
+
+$(BUILD)/HANOI.OVL:  $(OVL_DIR)/hanoi.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game HANOI..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   HANOI.OVL"
+
+$(BUILD)/REVERSI.OVL: $(OVL_DIR)/reversi.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game REVERSI..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   REVERSI.OVL"
+
+$(BUILD)/2048.OVL:   $(OVL_DIR)/2048.ovl.asm    $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game 2048..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   2048.OVL"
+
+$(BUILD)/LIGHTOUT.OVL: $(OVL_DIR)/lightout.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game LIGHTOUT..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   LIGHTOUT.OVL"
+
+$(BUILD)/MASTER.OVL: $(OVL_DIR)/master.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game MASTER..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   MASTER.OVL"
+
+$(BUILD)/BJACK.OVL:  $(OVL_DIR)/bjack.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game BJACK..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   BJACK.OVL"
+
+$(BUILD)/WARCARD.OVL: $(OVL_DIR)/warcard.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game WARCARD..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   WARCARD.OVL"
+
+$(BUILD)/CRAPS.OVL:  $(OVL_DIR)/craps.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game CRAPS..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   CRAPS.OVL"
+
+$(BUILD)/SLOTS.OVL:  $(OVL_DIR)/slots.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game SLOTS..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   SLOTS.OVL"
+
+$(BUILD)/WORDLE.OVL: $(OVL_DIR)/wordle.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game WORDLE..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   WORDLE.OVL"
+
+$(BUILD)/BATTLE.OVL: $(OVL_DIR)/battle.ovl.asm  $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game BATTLE..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   BATTLE.OVL"
+
+$(BUILD)/CHECKERS.OVL: $(OVL_DIR)/checkers.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling game CHECKERS..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   CHECKERS.OVL"
+
+$(BUILD)/DOOM.OVL:   $(OVL_DIR)/doom.ovl.asm    $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling DOOM-style raycaster demo..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   DOOM.OVL"
+
+$(BUILD)/CLOCK.OVL:  $(OVL_DIR)/clock.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay CLOCK..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   CLOCK.OVL"
+
+$(BUILD)/TASKMGR.OVL: $(OVL_DIR)/taskmgr.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay TASKMGR..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   TASKMGR.OVL"
+
+$(BUILD)/CONTROL.OVL: $(OVL_DIR)/control.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay CONTROL..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   CONTROL.OVL"
+
+$(BUILD)/WINFILE.OVL: $(OVL_DIR)/winfile.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay WINFILE..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   WINFILE.OVL"
+
+$(BUILD)/NOTEPAD.OVL: $(OVL_DIR)/notepad.ovl.asm $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay NOTEPAD..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   NOTEPAD.OVL"
+
+$(BUILD)/PAINT.OVL:  $(OVL_DIR)/paint.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling overlay PAINT..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   PAINT.OVL"
+
+$(BUILD)/SETUP.OVL:  $(OVL_DIR)/setup.ovl.asm   $(KERN_DIR)/ovl_api.asm | $(BUILD)
+	@echo "[NASM] Assembling Setup Wizard..."
+	$(NASM) $(OVL_FLAGS) -o $@ $<
+	@echo "[OK]   SETUP.OVL"
 
 $(DISK_IMG): $(BOOTSECT_BIN) $(KERNEL_BIN) $(OVL_BINS) | $(BUILD)
 	@echo "[PERL] Building FAT12 disk image..."
