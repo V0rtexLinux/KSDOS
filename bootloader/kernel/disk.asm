@@ -30,6 +30,7 @@ _dsect:         db 0        ; CHS sector
 _dhead:         db 0        ; CHS head
 _dcyl:          db 0        ; CHS cylinder
 _dretry:        db 0        ; retry counter
+_dbatch:        dw 0        ; disk_read_multi: sectors in current batch
 
 ; ============================================================
 ; disk_read_sector: Read 1 sector at LBA AX into ES:BX
@@ -161,23 +162,89 @@ disk_write_sector:
 
 ; ============================================================
 ; disk_read_multi: Read CX sectors at LBA AX into ES:BX
+;
+; Batches as many sectors as fit on the current CHS track into a single
+; INT 13h AH=02h call (never crossing a track boundary in one call),
+; instead of calling disk_read_sector once per sector. Chaining many
+; single-sector CHS reads back-to-back was found to eventually hang the
+; emulated floppy controller on some BIOS/QEMU combinations; batching
+; keeps the total INT 13h call count low enough to avoid that.
 ; ============================================================
 disk_read_multi:
     push ax
     push bx
     push cx
     push dx
+    push si
+    push di
+
 .loop:
     test cx, cx
     jz .done
-    call disk_read_sector
-    jc .err
-    add bx, 512
-    inc ax
-    dec cx
+
+    mov [_dlba], ax
+
+    ; LBA -> track/sector, clamp batch to sectors left on this track
+    xor dx, dx
+    mov di, [bpb_spt]
+    div di                   ; ax = track index, dx = sector (0-based)
+    mov si, [bpb_spt]
+    sub si, dx               ; si = sectors left on this track
+    cmp si, cx
+    jbe .batch_ok
+    mov si, cx
+.batch_ok:
+    mov [_dbatch], si
+    inc dx
+    mov [_dsect], dl         ; sector (1-based)
+
+    xor dx, dx
+    mov di, [bpb_heads]
+    div di                   ; ax = cylinder, dx = head
+    mov [_dhead], dl
+    mov [_dcyl], al
+
+    mov ch, [_dcyl]
+    mov cl, [_dsect]
+    mov dh, [_dhead]
+    mov dl, [boot_drive]
+    mov ah, 0x02             ; AH=2 (read)
+    mov al, [_dbatch]        ; AL = sectors this call
+
+    mov byte [_dretry], 0
+.try:
+    int 0x13
+    jnc .ok
+    ; Reset and retry
+    push ax
+    push bx
+    push cx
+    push dx
+    xor ax, ax
+    mov dl, [boot_drive]
+    int 0x13
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    inc byte [_dretry]
+    cmp byte [_dretry], 3
+    jb .try
+    jmp .err
+.ok:
+    mov ax, [_dbatch]
+    mov si, ax
+    shl si, 9                ; si = batch * 512
+    add bx, si
+    mov ax, [_dlba]
+    add ax, [_dbatch]
+    sub cx, [_dbatch]
     jmp .loop
+
 .err:
     stc
+    pop di
+    pop si
     pop dx
     pop cx
     pop bx
@@ -185,6 +252,8 @@ disk_read_multi:
     ret
 .done:
     clc
+    pop di
+    pop si
     pop dx
     pop cx
     pop bx
