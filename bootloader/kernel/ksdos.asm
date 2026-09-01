@@ -66,6 +66,25 @@ FN U0, kernel_entry
     mov sp, 0xFFFE
     sti
 
+    ; DL holds the boot drive from the boot sector, but nothing was ever
+    ; capturing it - every disk_read_sector/disk_read_multi call read
+    ; [boot_drive] as its compiled-in default (0x80) instead of the drive
+    ; actually booted from. Save it now, before anything else touches DL.
+    mov [boot_drive], dl
+
+    ; disk_read_sector/disk_read_multi divide by [bpb_spt]/[bpb_heads] to
+    ; turn an LBA into CHS. Their compiled-in defaults (18/2) are only ever
+    ; reached by NASM's assembler-time initializer, never actually written
+    ; to this variable's runtime address before fat_init's very first disk
+    ; read (of the boot sector itself, to learn the real BPB) - so that
+    ; first read divided by an uninitialized [bpb_spt], which happened to
+    ; read back as 0 in this environment: a CPU divide-by-zero fault loop,
+    ; which is what made boot appear to hang forever right after the splash
+    ; screen reached 100%. Seed real defaults so that first read has valid
+    ; geometry to compute CHS from.
+    mov word [bpb_spt], 18
+    mov word [bpb_heads], 2
+
     call video_init_text_mode
     call splash_init
     call system_load_complete

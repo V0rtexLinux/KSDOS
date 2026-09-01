@@ -1802,7 +1802,7 @@ sh_CD:
     cmp word [cur_dir_cluster], 0
     je .at_root
     call fat_load_dir
-    mov ax, [DIR_BUF + 32 + 26]    ; ".." entry cluster (offset 32 = 2nd entry)
+    mov ax, [es:DIR_BUF + 32 + 26]  ; ".." entry cluster (offset 32 = 2nd entry); flat, segment-0 address
     mov [cur_dir_cluster], ax
     call sh_cwd_pop
     ret
@@ -1956,7 +1956,7 @@ sh_RD:
     mov [cur_dir_cluster], ax
     call fat_load_dir
     ; Check entry at offset 64 (third entry) - must be 0x00 for empty dir
-    mov al, [DIR_BUF + 64]
+    mov al, [es:DIR_BUF + 64]      ; flat, segment-0 address
     cmp al, 0x00
     je .empty
     cmp al, 0xE5
@@ -2315,43 +2315,43 @@ sh_init_dir_cluster:
     push cx
     push di
     push es
-    ; Zero FILE_BUF (512 bytes)
-    mov ax, ds
+    ; Zero FILE_BUF (512 bytes) - flat, segment-0 address
+    xor ax, ax
     mov es, ax
     mov di, FILE_BUF
     mov cx, 256
     xor ax, ax
     rep stosw
     ; "." entry at FILE_BUF+0
-    mov byte [FILE_BUF+0],  '.'
-    mov byte [FILE_BUF+1],  ' '
-    mov byte [FILE_BUF+2],  ' '
-    mov byte [FILE_BUF+3],  ' '
-    mov byte [FILE_BUF+4],  ' '
-    mov byte [FILE_BUF+5],  ' '
-    mov byte [FILE_BUF+6],  ' '
-    mov byte [FILE_BUF+7],  ' '
-    mov byte [FILE_BUF+8],  ' '
-    mov byte [FILE_BUF+9],  ' '
-    mov byte [FILE_BUF+10], ' '
-    mov byte [FILE_BUF+11], 0x10    ; directory
+    mov byte [es:FILE_BUF+0],  '.'
+    mov byte [es:FILE_BUF+1],  ' '
+    mov byte [es:FILE_BUF+2],  ' '
+    mov byte [es:FILE_BUF+3],  ' '
+    mov byte [es:FILE_BUF+4],  ' '
+    mov byte [es:FILE_BUF+5],  ' '
+    mov byte [es:FILE_BUF+6],  ' '
+    mov byte [es:FILE_BUF+7],  ' '
+    mov byte [es:FILE_BUF+8],  ' '
+    mov byte [es:FILE_BUF+9],  ' '
+    mov byte [es:FILE_BUF+10], ' '
+    mov byte [es:FILE_BUF+11], 0x10    ; directory
     mov ax, [_sh_new_clus]
-    mov [FILE_BUF+26], ax           ; cluster = this dir
+    mov [es:FILE_BUF+26], ax           ; cluster = this dir
     ; ".." entry at FILE_BUF+32
-    mov byte [FILE_BUF+32+0],  '.'
-    mov byte [FILE_BUF+32+1],  '.'
-    mov byte [FILE_BUF+32+2],  ' '
-    mov byte [FILE_BUF+32+3],  ' '
-    mov byte [FILE_BUF+32+4],  ' '
-    mov byte [FILE_BUF+32+5],  ' '
-    mov byte [FILE_BUF+32+6],  ' '
-    mov byte [FILE_BUF+32+7],  ' '
-    mov byte [FILE_BUF+32+8],  ' '
-    mov byte [FILE_BUF+32+9],  ' '
-    mov byte [FILE_BUF+32+10], ' '
-    mov byte [FILE_BUF+32+11], 0x10 ; directory
+    mov byte [es:FILE_BUF+32+0],  '.'
+    mov byte [es:FILE_BUF+32+1],  '.'
+    mov byte [es:FILE_BUF+32+2],  ' '
+    mov byte [es:FILE_BUF+32+3],  ' '
+    mov byte [es:FILE_BUF+32+4],  ' '
+    mov byte [es:FILE_BUF+32+5],  ' '
+    mov byte [es:FILE_BUF+32+6],  ' '
+    mov byte [es:FILE_BUF+32+7],  ' '
+    mov byte [es:FILE_BUF+32+8],  ' '
+    mov byte [es:FILE_BUF+32+9],  ' '
+    mov byte [es:FILE_BUF+32+10], ' '
+    mov byte [es:FILE_BUF+32+11], 0x10 ; directory
     mov ax, [cur_dir_cluster]
-    mov [FILE_BUF+32+26], ax        ; cluster = parent
+    mov [es:FILE_BUF+32+26], ax        ; cluster = parent
     ; Write FILE_BUF to disk at new cluster
     mov ax, [_sh_new_clus]
     call cluster_to_lba

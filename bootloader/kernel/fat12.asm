@@ -29,7 +29,7 @@ fat_init:
     push es
 
     ; Read boot sector into FILE_BUF
-    mov ax, ds
+    xor ax, ax   ; FAT_BUF/DIR_BUF/FILE_BUF are flat, segment-0 addresses
     mov es, ax
     mov bx, FILE_BUF
     mov ax, 0
@@ -117,7 +117,7 @@ fat_init:
     mov [data_lba], ax
 
     ; Load FAT1 into FAT_BUF
-    mov ax, ds
+    xor ax, ax   ; FAT_BUF/DIR_BUF/FILE_BUF are flat, segment-0 addresses
     mov es, ax
     mov bx, FAT_BUF
     mov ax, [fat_lba]
@@ -142,7 +142,7 @@ fat_load_root:
     push bx
     push cx
     push es
-    mov ax, ds
+    xor ax, ax   ; FAT_BUF/DIR_BUF/FILE_BUF are flat, segment-0 addresses
     mov es, ax
     mov bx, DIR_BUF
     mov ax, [root_lba]
@@ -162,7 +162,7 @@ fat_save_root:
     push bx
     push cx
     push es
-    mov ax, ds
+    xor ax, ax   ; FAT_BUF/DIR_BUF/FILE_BUF are flat, segment-0 addresses
     mov es, ax
     mov bx, DIR_BUF
     mov ax, [root_lba]
@@ -505,7 +505,7 @@ fat_save_fat:
     push bx
     push cx
     push es
-    mov ax, ds
+    xor ax, ax   ; FAT_BUF/DIR_BUF/FILE_BUF are flat, segment-0 addresses
     mov es, ax
     ; Write FAT1
     mov bx, FAT_BUF
